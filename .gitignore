@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Claude Code 로컬 설정 (second-brain 연결 등)
+.claude/
