@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ReflectProbe
 {
@@ -10,21 +11,47 @@ namespace ReflectProbe
     /// </summary>
     public sealed class ProbeMemberSet : IReadOnlyList<ProbeMember>
     {
-        internal ProbeMemberSet(ProbeMember[] members)
+        private readonly Type _type;
+        private readonly ProbeMember[] _members;
+
+        // TypeProbe 의 이름 기반 API 도 이 맵 하나를 쓴다.
+        private readonly Dictionary<string, int> _nameToIndex;
+
+        internal ProbeMemberSet(Type type, ProbeMember[] members)
         {
-            throw new NotImplementedException();
+            _type = type;
+            _members = members;
+            _nameToIndex = new Dictionary<string, int>(members.Length, StringComparer.Ordinal);
+            foreach (ProbeMember member in members)
+            {
+                if (!member.IsHidden)
+                    _nameToIndex.Add(member.Name, member.Index);
+            }
         }
 
-        public int Count => throw new NotImplementedException();
+        public int Count => _members.Length;
 
-        public ProbeMember this[int index] => throw new NotImplementedException();
+        public ProbeMember this[int index] => _members[index];
 
         /// <summary>이름으로 찾는다. 없으면 MemberNotFoundException.</summary>
-        public ProbeMember this[string name] => throw new NotImplementedException();
+        public ProbeMember this[string name]
+            => TryGet(name, out ProbeMember? member) ? member : throw new MemberNotFoundException(_type, name);
 
-        public bool TryGet(string name, out ProbeMember member) => throw new NotImplementedException();
+        public bool TryGet(string name, [MaybeNullWhen(false)] out ProbeMember member)
+        {
+            if (_nameToIndex.TryGetValue(name, out int index))
+            {
+                member = _members[index];
+                return true;
+            }
 
-        public IEnumerator<ProbeMember> GetEnumerator() => throw new NotImplementedException();
+            member = null;
+            return false;
+        }
+
+        internal bool TryGetIndex(string name, out int index) => _nameToIndex.TryGetValue(name, out index);
+
+        public IEnumerator<ProbeMember> GetEnumerator() => ((IEnumerable<ProbeMember>)_members).GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }

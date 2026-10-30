@@ -22,6 +22,11 @@
 | 13 | AOT | Reflection 폴백 (아래 4장) | IL2CPP · NativeAOT 에서도 동작은 하게 |
 | 14 | 캐시 | `ConcurrentDictionary<(Type, ProbeScope), Lazy<TypeProbe>>`, `ExecutionAndPublication` | 동시 최초 생성에도 IL 생성 1회 |
 | 15 | 생성 경로 | DynamicMethod 만 사용, TypeBuilder 경로 없음 | 언로드 불가 + FastMember 동적 어셈블리 초기화 경쟁의 원인 |
+| 16 | const 필드 | 수집 제외 (10주) | 저장 공간이 없어 `ldsfld` 불가. 필요하면 `FieldInfo.GetRawConstantValue` |
+| 17 | 잘못된 입력 | 런타임 예외 그대로 전파 (10주) | null target → `NullReferenceException`, 타입 불일치 → `InvalidCastException`. 히트 경로 검사 비용 0, FastMember 와 같음 |
+| 18 | TypeProbe 생성 | 생성자가 `ProbeBuilder` 를 받음 (10주) | 4장의 "테스트에서 ReflectionProbeBuilder 직접 주입" 경로. ProbeCache 는 `ProbeBuilder.Current` 를 넘긴다 |
+| 19 | override 프로퍼티 | 가장 파생된 것 1개만 수집, 빠진 접근자는 부모 선언에서 보충 (10주) | getter 만 override 하면 파생 `PropertyInfo.SetMethod` 가 null 이라 쓰기가 막히는 문제 |
+| 20 | 이름 맵 위치 | `ProbeMemberSet` 이 멤버 목록의 `IsHidden` 으로 직접 생성, TypeProbe 도 이것을 사용 (10주) | 맵 이중화 방지. MemberCollector 는 목록만 반환 |
 
 ### 계획서 초안에서 바뀐 점
 
@@ -105,7 +110,7 @@ TypeProbe.Of<Player>()
   └ ProbeCache.GetOrCreate(typeof(Player), All)
       ├ 히트 : Lazy.Value 반환 (락 없음)
       └ 미스 : Lazy 1개만 실행
-          ├ MemberCollector.Collect → ProbeMember[] + name→index
+          ├ MemberCollector.Collect → ProbeMember[] (→ ProbeMemberSet 이 name→index 생성)
           ├ ProbeBuilder.Current.BuildGetter / BuildSetter (IL switch DynamicMethod)
           └ new TypeProbe<Player>(...)
 
@@ -133,3 +138,5 @@ ObjectReader(IDataReader), DLR `dynamic`, TypeBuilder 경로, ref/out 매개변�
 | `Getter<TValue>` 의 TValue 가 멤버 타입과 다를 때 | 정확히 일치할 때만 허용, 아니면 예외 |
 | struct 대상에 `Setter<TValue>` 호출 | `NotSupportedException` (RefSetter 안내) |
 | static 멤버의 강타입 Getter | target 인자를 무시 |
+| 인스턴스 readonly 필드에 DynamicMethod `stfld` | 10주 확인 : 동작함 (`Indexer_InstanceReadonlyField_Writes`) |
+| 박싱된 struct 를 `unbox` 주소로 쓰기 | 10주 확인 : 박스 원본이 바뀜 (`BoxedStruct_*`) |

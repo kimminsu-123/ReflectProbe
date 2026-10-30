@@ -10,7 +10,8 @@ namespace ReflectProbe.Internal
     internal abstract class ProbeBuilder
     {
         /// <summary>DynamicCodeSupport 판단 결과에 따른 프로세스 기본 빌더.</summary>
-        public static ProbeBuilder Current => throw new NotImplementedException();
+        /// <remarks>Reflection 폴백 연동(13주) 전까지는 Emit 고정.</remarks>
+        public static ProbeBuilder Current { get; } = new EmitProbeBuilder();
 
         public abstract ProbeMode Mode { get; }
 

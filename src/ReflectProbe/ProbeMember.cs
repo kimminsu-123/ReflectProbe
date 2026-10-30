@@ -14,9 +14,41 @@ namespace ReflectProbe
     /// </summary>
     public sealed class ProbeMember
     {
-        internal ProbeMember(MemberInfo info, int index, bool isHidden)
+        // scope 는 프로퍼티 접근자의 공개 여부를 CanRead / CanWrite 에 반영하기 위해 받는다.
+        internal ProbeMember(MemberInfo info, int index, bool isHidden, ProbeScope scope)
         {
-            throw new NotImplementedException();
+            Info = info;
+            Index = index;
+            IsHidden = isHidden;
+            Name = info.Name;
+            DeclaringType = info.DeclaringType!;
+
+            switch (info)
+            {
+                case FieldInfo field:
+                    Kind = ProbeMemberKind.Field;
+                    Type = field.FieldType;
+                    IsStatic = field.IsStatic;
+                    IsPublic = field.IsPublic;
+                    CanRead = true;
+                    CanWrite = !(field.IsStatic && field.IsInitOnly);
+                    break;
+
+                case PropertyInfo property:
+                    bool allowNonPublic = (scope & ProbeScope.NonPublic) != 0;
+                    GetMethod = FindAccessor(property, getter: true);
+                    SetMethod = FindAccessor(property, getter: false);
+                    Kind = ProbeMemberKind.Property;
+                    Type = property.PropertyType;
+                    IsStatic = (GetMethod ?? SetMethod)!.IsStatic;
+                    IsPublic = GetMethod?.IsPublic == true || SetMethod?.IsPublic == true;
+                    CanRead = GetMethod != null && (allowNonPublic || GetMethod.IsPublic);
+                    CanWrite = SetMethod != null && (allowNonPublic || SetMethod.IsPublic);
+                    break;
+
+                default:
+                    throw new ArgumentException($"필드나 프로퍼티가 아닙니다: {info}", nameof(info));
+            }
         }
 
         public string Name { get; }
@@ -47,6 +79,46 @@ namespace ReflectProbe
         /// <summary>Attribute 조회 등 추가 정보가 필요할 때 쓰는 원본 MemberInfo.</summary>
         public MemberInfo Info { get; }
 
+        /// <summary>프로퍼티 getter. 상속받은 접근자 포함. 필드는 null.</summary>
+        internal MethodInfo? GetMethod { get; }
+
+        /// <summary>프로퍼티 setter. 상속받은 접근자 포함. 필드는 null.</summary>
+        internal MethodInfo? SetMethod { get; }
+
         public override string ToString() => $"{Kind} {Type.Name} {Name}";
+
+        /// <summary>
+        /// getter 만 override 하면 파생 타입의 PropertyInfo.SetMethod 는 null 이다. (반대도 같음)
+        /// 이때 같은 가상 프로퍼티를 선언한 부모에서 빠진 접근자를 찾는다. 가상 호출이라 실제 동작은 override 규칙을 따른다.
+        /// </summary>
+        private static MethodInfo? FindAccessor(PropertyInfo property, bool getter)
+        {
+            MethodInfo? own = getter ? property.GetMethod : property.SetMethod;
+            if (own != null)
+                return own;
+
+            MethodInfo? other = getter ? property.SetMethod : property.GetMethod;
+            if (other == null || !other.IsVirtual)
+                return null;
+
+            MethodInfo otherDefinition = other.GetBaseDefinition();
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+
+            for (Type? current = property.DeclaringType!.BaseType; current != null; current = current.BaseType)
+            {
+                foreach (PropertyInfo candidate in current.GetProperties(flags))
+                {
+                    MethodInfo? candidateOther = getter ? candidate.SetMethod : candidate.GetMethod;
+                    if (candidate.Name != property.Name || candidateOther?.GetBaseDefinition() != otherDefinition)
+                        continue;
+
+                    MethodInfo? accessor = getter ? candidate.GetMethod : candidate.SetMethod;
+                    if (accessor != null)
+                        return accessor;
+                }
+            }
+
+            return null;
+        }
     }
 }

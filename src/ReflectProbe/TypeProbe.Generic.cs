@@ -1,4 +1,5 @@
 using System;
+using ReflectProbe.Internal;
 
 namespace ReflectProbe
 {
@@ -8,8 +9,8 @@ namespace ReflectProbe
     /// </summary>
     public sealed class TypeProbe<T> : TypeProbe
     {
-        internal TypeProbe(ProbeScope scope)
-            : base(typeof(T), scope)
+        internal TypeProbe(ProbeScope scope, ProbeBuilder builder)
+            : base(typeof(T), scope, builder)
         {
         }
 

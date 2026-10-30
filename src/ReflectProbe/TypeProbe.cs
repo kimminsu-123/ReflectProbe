@@ -1,4 +1,5 @@
 using System;
+using ReflectProbe.Internal;
 
 namespace ReflectProbe
 {
@@ -8,19 +9,30 @@ namespace ReflectProbe
     /// </summary>
     public abstract class TypeProbe
     {
-        private protected TypeProbe(Type type, ProbeScope scope)
+        // (index, target) → value / (index, target, value). 타입 전체 멤버를 IL switch 로 분기하는 델리게이트 1개씩.
+        private readonly Func<int, object?, object?> _getter;
+        private readonly Action<int, object?, object?> _setter;
+
+        // builder 는 테스트에서 ReflectionProbeBuilder 를 직접 넣을 수 있도록 생성자로 받는다.
+        private protected TypeProbe(Type type, ProbeScope scope, ProbeBuilder builder)
         {
-            throw new NotImplementedException();
+            Type = type;
+            Scope = scope;
+
+            ProbeMember[] members = MemberCollector.Collect(type, scope);
+            Members = new ProbeMemberSet(type, members);
+            _getter = builder.BuildGetter(type, members);
+            _setter = builder.BuildSetter(type, members);
         }
 
         // ---------- 생성 / 캐시 ----------
 
-        public static TypeProbe Of(Type type, ProbeScope scope = ProbeScope.All) => throw new NotImplementedException();
+        public static TypeProbe Of(Type type, ProbeScope scope = ProbeScope.All) => ProbeCache.GetOrCreate(type, scope);
 
-        public static TypeProbe<T> Of<T>(ProbeScope scope = ProbeScope.All) => throw new NotImplementedException();
+        public static TypeProbe<T> Of<T>(ProbeScope scope = ProbeScope.All) => (TypeProbe<T>)ProbeCache.GetOrCreate(typeof(T), scope);
 
         /// <summary>이 프로세스에서 쓰는 접근 코드 생성 방식. 최초 1회 판단 후 고정.</summary>
-        public static ProbeMode Mode => throw new NotImplementedException();
+        public static ProbeMode Mode => ProbeBuilder.Current.Mode;
 
         public Type Type { get; }
 
@@ -33,28 +45,52 @@ namespace ReflectProbe
         /// <summary>
         /// 이름으로 읽고 쓴다. static 멤버는 target 을 무시한다.
         /// 없는 이름은 MemberNotFoundException, 방향이 막힌 멤버는 MemberNotReadable/NotWritableException.
+        /// 인스턴스 멤버에 null target 은 NullReferenceException, 타입이 맞지 않는 target · value 는 InvalidCastException 이
+        /// 그대로 전파된다. (히트 경로에 검사 비용을 두지 않는다)
+        /// 값 타입 target 은 박스 안의 값을 직접 수정한다.
         /// </summary>
         public object? this[object? target, string name]
         {
-            get => throw new NotImplementedException();
-            set => throw new NotImplementedException();
+            get => _getter(GetIndex(name), target);
+            set => _setter(GetIndex(name), target, value);
         }
 
         /// <summary>없거나 읽을 수 없으면 false. 예외를 던지지 않는다.</summary>
-        public bool TryGetValue(object? target, string name, out object? value) => throw new NotImplementedException();
+        public bool TryGetValue(object? target, string name, out object? value)
+        {
+            if (Members.TryGet(name, out ProbeMember? member) && member.CanRead)
+            {
+                value = _getter(member.Index, target);
+                return true;
+            }
+
+            value = null;
+            return false;
+        }
 
         /// <summary>없거나 쓸 수 없으면 false. 예외를 던지지 않는다.</summary>
-        public bool TrySetValue(object? target, string name, object? value) => throw new NotImplementedException();
+        public bool TrySetValue(object? target, string name, object? value)
+        {
+            if (Members.TryGet(name, out ProbeMember? member) && member.CanWrite)
+            {
+                _setter(member.Index, target, value);
+                return true;
+            }
+
+            return false;
+        }
 
         // ---------- 필드 / 프로퍼티 : 인덱스 기반 (이름 해시 생략) ----------
 
-        public int GetIndex(string name) => throw new NotImplementedException();
+        public int GetIndex(string name) => Members.TryGetIndex(name, out int index) ? index : throw new MemberNotFoundException(Type, name);
 
-        public bool TryGetIndex(string name, out int index) => throw new NotImplementedException();
+        public bool TryGetIndex(string name, out int index) => Members.TryGetIndex(name, out index);
 
-        public object? GetValue(object? target, int index) => throw new NotImplementedException();
+        /// <summary>범위 밖 index 는 ArgumentOutOfRangeException. IsHidden 멤버도 접근할 수 있다.</summary>
+        public object? GetValue(object? target, int index) => _getter(index, target);
 
-        public void SetValue(object? target, int index, object? value) => throw new NotImplementedException();
+        /// <summary>범위 밖 index 는 ArgumentOutOfRangeException. IsHidden 멤버도 접근할 수 있다.</summary>
+        public void SetValue(object? target, int index, object? value) => _setter(index, target, value);
 
         // ---------- 생성자 ----------
 
