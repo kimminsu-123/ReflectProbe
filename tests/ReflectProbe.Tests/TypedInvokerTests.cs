@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace ReflectProbe.Tests;
 
 public class TypedInvokerTests
@@ -136,7 +138,10 @@ public class TypedInvokerTests
         Assert.Same(_probe.GetInvoker<Func<Enemy, int, int>>("Attack"), _probe.GetInvoker<Func<Enemy, int, int>>("Attack"));
     }
 
+    // 할당 측정 테스트는 AggressiveOptimization 으로 바로 최적화 컴파일한다.
+    // Tier0(PGO 계측) 코드가 루프 도중 OSR 로 바뀌는 순간 런타임이 1회 할당해 측정에 섞인다 (12주 확인 : 24 B, 호출 수와 무관).
     [Fact]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Invoker_Call_DoesNotAllocate()
     {
         var enemy = new Enemy(100, 50);
@@ -177,6 +182,7 @@ public class TypedInvokerTests
     }
 
     [Fact]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)] // Invoker_Call_DoesNotAllocate 주석 참고
     public void Factory_Struct_DoesNotAllocate()
     {
         var create = TypeProbe.Of<Counter>().GetFactory<Func<int, Counter>>();

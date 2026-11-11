@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace ReflectProbe.Tests;
 
 public class ConstructorTests
@@ -68,6 +70,7 @@ public class ConstructorTests
     }
 
     [Fact]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)] // TypedInvokerTests.Invoker_Call_DoesNotAllocate 주석 참고
     public void CreateInstance_StructGeneric_DoesNotAllocate()
     {
         var probe = TypeProbe.Of<MutablePoint>();
