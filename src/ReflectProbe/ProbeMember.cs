@@ -15,11 +15,12 @@ namespace ReflectProbe
     public sealed class ProbeMember
     {
         // scope 는 프로퍼티 접근자의 공개 여부를 CanRead / CanWrite 에 반영하기 위해 받는다.
-        internal ProbeMember(MemberInfo info, int index, bool isHidden, ProbeScope scope)
+        internal ProbeMember(MemberInfo info, int index, bool isHidden, int depthOffset, ProbeScope scope)
         {
             Info = info;
             Index = index;
             IsHidden = isHidden;
+            DepthOffset = depthOffset;
             Name = info.Name;
             DeclaringType = info.DeclaringType!;
 
@@ -75,6 +76,12 @@ namespace ReflectProbe
 
         /// <summary>파생 타입의 같은 이름 멤버에 가려져 이름으로는 접근할 수 없는 멤버. 인덱스로는 접근 가능하다.</summary>
         public bool IsHidden { get; }
+
+        /// <summary>
+        /// 선언 타입이 TypeProbe 대상 타입에서 몇 단계 위인지. 0 = 대상 타입(자식), 1 = 직속 부모, 2 = 조부모 …
+        /// probe[target, name, depthOffset] 로 같은 이름의 부모 멤버를 찾을 때 쓴다.
+        /// </summary>
+        public int DepthOffset { get; }
 
         /// <summary>Attribute 조회 등 추가 정보가 필요할 때 쓰는 원본 MemberInfo.</summary>
         public MemberInfo Info { get; }

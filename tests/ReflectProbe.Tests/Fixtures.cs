@@ -44,6 +44,12 @@ internal class Dog : Animal
     public override int Weight => base.Weight + 1;    // getter 만 override, setter 는 Animal 선언
 }
 
+/// <summary>3단계 상속. _tag 가 Puppy(0) · Dog(1) · Animal(2) 에 모두 있다. depthOffset 테스트 전용.</summary>
+internal class Puppy : Dog
+{
+    private new string _tag = "puppy";
+}
+
 internal struct MutablePoint
 {
     public int X;

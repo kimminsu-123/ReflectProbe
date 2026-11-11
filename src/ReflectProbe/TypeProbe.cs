@@ -14,10 +14,13 @@ namespace ReflectProbe
         private readonly Action<int, object?, object?> _setter;
 
         // builder 는 테스트에서 ReflectionProbeBuilder 를 직접 넣을 수 있도록 생성자로 받는다.
+        private protected ProbeBuilder _builder;
+
         private protected TypeProbe(Type type, ProbeScope scope, ProbeBuilder builder)
         {
             Type = type;
             Scope = scope;
+            _builder = builder;
 
             ProbeMember[] members = MemberCollector.Collect(type, scope);
             Members = new ProbeMemberSet(type, members);
@@ -55,6 +58,16 @@ namespace ReflectProbe
             set => _setter(GetIndex(name), target, value);
         }
 
+        /// <summary>
+        /// 같은 이름의 부모 멤버를 선언 깊이로 지정해 읽고 쓴다. probe[p, "_tag", 1] → 직속 부모가 선언한 _tag.
+        /// 0 은 this[target, name] 과 같다. IL switch 는 그대로 쓰고 인덱스 탐색만 다르다.
+        /// </summary>
+        public object? this[object? target, string name, int depthOffset]
+        {
+            get => _getter(GetIndex(name, depthOffset), target);
+            set => _setter(GetIndex(name, depthOffset), target, value);
+        }
+
         /// <summary>없거나 읽을 수 없으면 false. 예외를 던지지 않는다.</summary>
         public bool TryGetValue(object? target, string name, out object? value)
         {
@@ -83,6 +96,10 @@ namespace ReflectProbe
         // ---------- 필드 / 프로퍼티 : 인덱스 기반 (이름 해시 생략) ----------
 
         public int GetIndex(string name) => Members.TryGetIndex(name, out int index) ? index : throw new MemberNotFoundException(Type, name);
+
+        /// <summary>이름 + 선언 깊이의 인덱스. 반복 호출할 때는 받아 두고 GetValue / SetValue 로 쓴다.</summary>
+        public int GetIndex(string name, int depthOffset)
+            => Members.TryGet(name, depthOffset, out ProbeMember? member) ? member.Index : throw new MemberNotFoundException(Type, name);
 
         public bool TryGetIndex(string name, out int index) => Members.TryGetIndex(name, out index);
 

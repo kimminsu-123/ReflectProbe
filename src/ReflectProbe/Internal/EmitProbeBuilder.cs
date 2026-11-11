@@ -95,11 +95,136 @@ namespace ReflectProbe.Internal
             return (Action<int, object?, object?>)method.CreateDelegate(typeof(Action<int, object?, object?>));
         }
 
-        public override Getter<T, TValue> BuildGetter<T, TValue>(ProbeMember member) => throw new NotImplementedException();
+        public override Getter<T, TValue> BuildGetter<T, TValue>(ProbeMember member)
+        {
+            if (!member.CanRead)
+                throw new MemberNotReadableException(member.DeclaringType, member.Name);
 
-        public override Setter<T, TValue> BuildSetter<T, TValue>(ProbeMember member) => throw new NotImplementedException();
+            Type tType = typeof(T);
+            Type tvType = typeof(TValue);
+            DynamicMethod method = CreateMethod(
+                $"ProbeGet_{tType.Name}_{member.Name}",
+                tvType,
+                new[] { tType },
+                member.DeclaringType);
+            ILGenerator il = method.GetILGenerator();
 
-        public override RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member) => throw new NotImplementedException();
+            if (!member.IsStatic)
+            {
+                if (tType.IsValueType)
+                    il.Emit(OpCodes.Ldarga_S, (byte)0);
+                else
+                {
+                    il.Emit(OpCodes.Ldarg_0);
+                    if (tType != member.DeclaringType)
+                        il.Emit(OpCodes.Castclass, member.DeclaringType);
+                }
+            }
+
+            if (member.Info is FieldInfo getterField)
+                il.Emit(member.IsStatic ? OpCodes.Ldsfld : OpCodes.Ldfld, getterField);
+            else
+                EmitCall(il, member.GetMethod!);
+
+            if (tvType != member.Type)
+            {
+                if (member.Type.IsValueType && !tvType.IsValueType)
+                    il.Emit(OpCodes.Box, member.Type);
+                else if (!member.Type.IsValueType && tvType.IsValueType)
+                    il.Emit(OpCodes.Unbox_Any, tvType);
+                else if (!tvType.IsValueType)
+                    il.Emit(OpCodes.Castclass, tvType);
+            }
+
+            il.Emit(OpCodes.Ret);
+            return (Getter<T, TValue>)method.CreateDelegate(typeof(Getter<T, TValue>));
+        }
+
+        public override Setter<T, TValue> BuildSetter<T, TValue>(ProbeMember member)
+        {
+            if (!member.CanWrite)
+                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+
+            Type tType = typeof(T);
+            Type tvType = typeof(TValue);
+            DynamicMethod method = CreateMethod(
+                $"ProbeSet_{tType.Name}_{member.Name}",
+                typeof(void),
+                new[] { tType, tvType },
+                member.DeclaringType);
+            ILGenerator il = method.GetILGenerator();
+
+            if (!member.IsStatic)
+            {
+                il.Emit(OpCodes.Ldarg_0);
+                if (!tType.IsValueType && tType != member.DeclaringType)
+                    il.Emit(OpCodes.Castclass, member.DeclaringType);
+            }
+
+            il.Emit(OpCodes.Ldarg_1);
+            if (tvType != member.Type)
+            {
+                if (tvType.IsValueType && !member.Type.IsValueType)
+                    il.Emit(OpCodes.Box, tvType);
+                else if (!tvType.IsValueType && member.Type.IsValueType)
+                    il.Emit(OpCodes.Unbox_Any, member.Type);
+                else if (!member.Type.IsValueType)
+                    il.Emit(OpCodes.Castclass, member.Type);
+            }
+
+            if (member.Info is FieldInfo setterField)
+                il.Emit(member.IsStatic ? OpCodes.Stsfld : OpCodes.Stfld, setterField);
+            else
+                EmitCall(il, member.SetMethod!);
+
+            il.Emit(OpCodes.Ret);
+            return (Setter<T, TValue>)method.CreateDelegate(typeof(Setter<T, TValue>));
+        }
+
+        public override RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member)
+        {
+            if (!member.CanWrite)
+                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+
+            Type tType = typeof(T);
+            Type tvType = typeof(TValue);
+            DynamicMethod method = CreateMethod(
+                $"ProbeRefSet_{tType.Name}_{member.Name}",
+                typeof(void),
+                new[] { tType.MakeByRefType(), tvType },
+                member.DeclaringType);
+            ILGenerator il = method.GetILGenerator();
+
+            if (!member.IsStatic)
+            {
+                il.Emit(OpCodes.Ldarg_0);
+                if (!tType.IsValueType)
+                {
+                    il.Emit(OpCodes.Ldind_Ref);
+                    if (tType != member.DeclaringType)
+                        il.Emit(OpCodes.Castclass, member.DeclaringType);
+                }
+            }
+
+            il.Emit(OpCodes.Ldarg_1);
+            if (tvType != member.Type)
+            {
+                if (tvType.IsValueType && !member.Type.IsValueType)
+                    il.Emit(OpCodes.Box, tvType);
+                else if (!tvType.IsValueType && member.Type.IsValueType)
+                    il.Emit(OpCodes.Unbox_Any, member.Type);
+                else if (!member.Type.IsValueType)
+                    il.Emit(OpCodes.Castclass, member.Type);
+            }
+
+            if (member.Info is FieldInfo refSetterField)
+                il.Emit(member.IsStatic ? OpCodes.Stsfld : OpCodes.Stfld, refSetterField);
+            else
+                EmitCall(il, member.SetMethod!);
+
+            il.Emit(OpCodes.Ret);
+            return (RefSetter<T, TValue>)method.CreateDelegate(typeof(RefSetter<T, TValue>));
+        }
 
         public override Func<object>? BuildDefaultFactory(Type type) => throw new NotImplementedException();
 

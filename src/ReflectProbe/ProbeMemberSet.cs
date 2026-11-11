@@ -51,6 +51,31 @@ namespace ReflectProbe
 
         internal bool TryGetIndex(string name, out int index) => _nameToIndex.TryGetValue(name, out index);
 
+        /// <summary>
+        /// 이름 + 선언 깊이로 찾는다. depthOffset 0 은 TryGet(name) 과 같다 (가장 파생된 멤버).
+        /// 1 이상이면 그 깊이에서 선언된 같은 이름 멤버를 찾는다. 가려진(IsHidden) 멤버도 포함.
+        /// 히트 경로가 아니라 선형 탐색한다. (호출 측은 GetIndex 로 인덱스를 받아 두고 쓴다)
+        /// </summary>
+        public bool TryGet(string name, int depthOffset, [MaybeNullWhen(false)] out ProbeMember member)
+        {
+            if (depthOffset < 0)
+                throw new ArgumentOutOfRangeException(nameof(depthOffset), depthOffset, "0 이상이어야 합니다.");
+            if (depthOffset == 0)
+                return TryGet(name, out member);
+
+            foreach (ProbeMember candidate in _members)
+            {
+                if (candidate.DepthOffset == depthOffset && string.Equals(candidate.Name, name, StringComparison.Ordinal))
+                {
+                    member = candidate;
+                    return true;
+                }
+            }
+
+            member = null;
+            return false;
+        }
+
         public IEnumerator<ProbeMember> GetEnumerator() => ((IEnumerable<ProbeMember>)_members).GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
