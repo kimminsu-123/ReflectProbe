@@ -28,6 +28,11 @@
 | 19 | override 프로퍼티 | 가장 파생된 것 1개만 수집, 빠진 접근자는 부모 선언에서 보충 (10주) | getter 만 override 하면 파생 `PropertyInfo.SetMethod` 가 null 이라 쓰기가 막히는 문제 |
 | 20 | 이름 맵 위치 | `ProbeMemberSet` 이 멤버 목록의 `IsHidden` 으로 직접 생성, TypeProbe 도 이것을 사용 (10주) | 맵 이중화 방지. MemberCollector 는 목록만 반환 |
 | 21 | 이름 중복 시 깊이 기반 접근 | `probe[p, "_tag", 1]` — 세 번째 인자 `depthOffset` 으로 부모 계층 지정 (11주 구현) | 숫자 인덱스(`probe[p, 5]`)는 목록 순번이 바뀌면 깨지므로, 의미 있는 깊이 오프셋으로 접근하는 API 를 별도 제공한다. `0` = 자식(기본), `1` = 직속 부모, `2` = 조부모 |
+| 22 | 생성자 · 메서드 매개변수 매칭 | 타입이 정확히 일치하는 것만. `Type.GetMethod` 의 기본 Binder 를 쓰지 않고 직접 비교 (12주) | 기본 Binder 는 대입 가능한 오버로드도 골라 `Describe(object)` 가 `Describe(string)` 요청에 잡힌다. 결정 6 의 "모호성 제거"와 충돌 |
+| 23 | 메서드 수집 규칙 | 필드(결정 11 · 19)와 같음 : BaseType 체인 DeclaredOnly (부모 private 포함), override 는 가장 파생된 1개, 같은 시그니처 `new` 는 자식 우선. 특수 이름(접근자 · 연산자) · 제네릭 메서드 정의 · ref/out/포인터 시그니처 제외 (12주) | 필드 API 와 같은 규칙이어야 사용자가 예측 가능 |
+| 24 | 기본 생성자 | `TypeProbe<T>.CreateInstance()` 는 `Func<T>` (struct 박싱 없음). struct 는 선언된 매개변수 없는 생성자 우선, 없으면 `initobj`. 추상 · 인터페이스 · static 클래스 · 생성자 없음은 `CanCreateInstance = false`, `CreateInstance()` 는 `MemberNotFoundException(".ctor()")` (12주) | Activator 는 `MissingMethodException` 이지만 라이브러리 예외 계층(결정 5)으로 통일 |
+| 25 | struct 인스턴스 메서드 | 박스 대상 지원 : `unbox` 주소로 `call` → 값을 바꾸는 메서드는 박스 원본 수정 (12주, 5장 범위 밖에서 이동) | 이름 기반 setter 와 같은 규칙. `EmitLoadTarget` 재사용이라 추가 코드 없음 |
+| 26 | 생성 시점 · 캐시 | 메서드 목록 · 기본 팩토리는 처음 쓸 때 `Lazy` 로 1회. 팩토리 · Invoker 는 `ConstructorInfo` · `MethodInfo` 키 캐시, `Invoke(name)` 은 이름 키 캐시 (12주) | 필드만 쓰는 타입은 메서드 수집 비용 0. 같은 메서드를 다른 경로로 찾아도 델리게이트 1개 |
 
 ### 계획서 초안에서 바뀐 점
 
@@ -130,7 +135,7 @@ probe.Getter<int>("hp")(p)      ← 멤버 전용 DynamicMethod, 박싱 없음
 
 ## 5. 범위 밖
 
-ObjectReader(IDataReader), DLR `dynamic`, TypeBuilder 경로, ref/out 매개변수, 구조체 인스턴스 메서드 호출.
+ObjectReader(IDataReader), DLR `dynamic`, TypeBuilder 경로, ref/out 매개변수, 제네릭 메서드 정의, 이름으로 연산자 · 프로퍼티 접근자 호출, 강타입 Invoker (`Func<T, …>`).
 
 ## 6. 구현 전 확인할 세부 항목
 

@@ -74,4 +74,90 @@ internal class ConcurrencyTarget
     private int _value;
 }
 
+// ---------- 12주 : 생성자 · 메서드 ----------
+
+/// <summary>5주 ReflectionBenchmark 의 Enemy 와 같은 모양 + 오버로드 · private · static · void.</summary>
+internal class Enemy
+{
+    private int _hp;
+    private int _damage;
+    private string _log = "";
+
+    public Enemy() { }
+
+    public Enemy(int hp, int damage)
+    {
+        _hp = hp;
+        _damage = damage;
+    }
+
+    private Enemy(string log) => _log = log;
+
+    public int Hp => _hp;
+    public string Log => _log;
+
+    public int Attack() => _damage;                                          // 오버로드 3개
+    public int Attack(int multiplier) => _damage * multiplier;
+    public int Attack(int multiplier, int bonus) => _damage * multiplier + bonus;
+
+    public void TakeDamage(int amount) => _hp -= amount;                     // void
+    private string Secret() => "secret:" + _hp;                              // private
+    public static int Add(int a, int b) => a + b;                            // static
+    public string Describe(object value) => "object:" + value;              // 정확 일치 검사용
+    public string Rename(string? name) => _log = name ?? "null";             // null 인자
+    public T Echo<T>(T value) => value;                                      // 제외 (제네릭 메서드 정의)
+    public void TryHit(out int damage) => damage = _damage;                  // 제외 (out 매개변수)
+}
+
+internal class Creature
+{
+    private string Secret() => "creature-secret";                           // 부모 private
+    public virtual string Speak() => "creature";
+    public string Name() => "creature";
+}
+
+internal class Goblin : Creature
+{
+    public override string Speak() => "goblin";                              // override → 1개만
+    public new string Name() => "goblin";                                    // new → 자식 우선
+}
+
+internal abstract class Shape
+{
+    public Shape() { }
+}
+
+internal interface IShape
+{
+    int Sides();
+}
+
+internal class Triangle : IShape
+{
+    public int Sides() => 3;
+}
+
+internal class Singleton
+{
+    private Singleton() { }
+}
+
+internal struct Counter
+{
+    public int Count;
+
+    public Counter(int count) => Count = count;
+
+    public void Increment() => Count++;
+    public override string ToString() => "Counter(" + Count + ")";
+}
+
+/// <summary>매개변수 없는 생성자를 직접 선언한 struct (C# 10). initobj 가 아니라 이 생성자가 불려야 한다.</summary>
+internal struct DefaultedStruct
+{
+    public int Value;
+
+    public DefaultedStruct() => Value = 42;
+}
+
 #pragma warning restore CS0169, CS0414, CS0649

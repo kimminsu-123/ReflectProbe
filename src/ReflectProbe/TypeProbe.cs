@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Threading;
 using ReflectProbe.Internal;
 
 namespace ReflectProbe
@@ -16,6 +20,14 @@ namespace ReflectProbe
         // builder 는 테스트에서 ReflectionProbeBuilder 를 직접 넣을 수 있도록 생성자로 받는다.
         private protected ProbeBuilder _builder;
 
+        // 메서드 목록은 Invoker 를 처음 찾을 때 1회 수집한다. (필드 접근만 쓰는 타입은 비용 없음)
+        private readonly Lazy<Dictionary<string, MethodInfo[]>> _methods;
+
+        // 생성자 · 메서드당 델리게이트 1개. 동시에 2번 만들어져도 게시는 1개.
+        private readonly ConcurrentDictionary<ConstructorInfo, ProbeFactory> _factoryCache = new();
+        private readonly ConcurrentDictionary<MethodInfo, ProbeInvoker> _invokerCache = new();
+        private readonly ConcurrentDictionary<string, ProbeInvoker> _invokerByName = new(StringComparer.Ordinal);
+
         private protected TypeProbe(Type type, ProbeScope scope, ProbeBuilder builder)
         {
             Type = type;
@@ -26,6 +38,8 @@ namespace ReflectProbe
             Members = new ProbeMemberSet(type, members);
             _getter = builder.BuildGetter(type, members);
             _setter = builder.BuildSetter(type, members);
+            _methods = new Lazy<Dictionary<string, MethodInfo[]>>(
+                () => MethodCollector.Collect(type, scope), LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         // ---------- 생성 / 캐시 ----------
@@ -111,23 +125,85 @@ namespace ReflectProbe
 
         // ---------- 생성자 ----------
 
-        /// <summary>매개변수 없는 생성자가 있거나 값 타입이면 true.</summary>
-        public bool CanCreateInstance => throw new NotImplementedException();
+        /// <summary>범위 안에 매개변수 없는 생성자가 있거나 값 타입이면 true. 추상 타입 · 인터페이스는 false.</summary>
+        public bool CanCreateInstance => HasDefaultFactory;
 
-        public object CreateInstance() => throw new NotImplementedException();
+        /// <summary>
+        /// 매개변수 없는 생성자로 만든다. 값 타입은 생성자가 없으면 default 값을 박싱해 돌려준다.
+        /// 만들 수 없으면 MemberNotFoundException. 박싱 없이 받으려면 TypeProbe&lt;T&gt;.CreateInstance() 를 쓴다.
+        /// </summary>
+        public object CreateInstance() => CreateInstanceAsObject();
 
-        /// <summary>매개변수 타입이 정확히 일치하는 생성자의 팩토리. 반환값을 캐싱해서 쓴다.</summary>
-        public ProbeFactory GetFactory(params Type[] parameterTypes) => throw new NotImplementedException();
+        /// <summary>
+        /// 매개변수 타입이 정확히 일치하는 생성자의 팩토리. 생성자당 1회 생성 후 캐싱하지만, 찾는 비용이 있으므로 반환값을 보관해 쓴다.
+        /// args 개수가 틀리면 IndexOutOfRangeException, 타입이 틀리면 InvalidCastException 이 그대로 전파된다.
+        /// </summary>
+        public ProbeFactory GetFactory(params Type[] parameterTypes)
+        {
+            if (parameterTypes is null)
+                throw new ArgumentNullException(nameof(parameterTypes));
+
+            ConstructorInfo constructor = MethodCollector.FindConstructor(Type, Scope, parameterTypes)
+                ?? throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(".ctor", parameterTypes));
+
+            if (_factoryCache.TryGetValue(constructor, out ProbeFactory? cached))
+                return cached;
+            return _factoryCache.GetOrAdd(constructor, _builder.BuildFactory(constructor));
+        }
+
+        private protected abstract bool HasDefaultFactory { get; }
+
+        private protected abstract object CreateInstanceAsObject();
 
         // ---------- 메서드 ----------
 
         /// <summary>이름으로 찾는다. 오버로드가 2개 이상이면 AmbiguousMemberException.</summary>
-        public ProbeInvoker GetInvoker(string name) => throw new NotImplementedException();
+        public ProbeInvoker GetInvoker(string name)
+        {
+            MethodInfo[] overloads = FindOverloads(name);
+            if (overloads.Length > 1)
+                throw new AmbiguousMemberException(Type, name);
+            return GetOrBuildInvoker(overloads[0]);
+        }
 
-        /// <summary>이름 + 매개변수 타입으로 찾는다. 매개변수 없는 오버로드는 Type.EmptyTypes 를 넘긴다.</summary>
-        public ProbeInvoker GetInvoker(string name, params Type[] parameterTypes) => throw new NotImplementedException();
+        /// <summary>이름 + 매개변수 타입으로 찾는다. 타입은 정확히 일치해야 한다. 매개변수 없는 오버로드는 Type.EmptyTypes 를 넘긴다.</summary>
+        public ProbeInvoker GetInvoker(string name, params Type[] parameterTypes)
+        {
+            if (parameterTypes is null)
+                throw new ArgumentNullException(nameof(parameterTypes));
 
-        /// <summary>GetInvoker(name) 결과를 내부에 캐싱해 호출한다.</summary>
-        public object? Invoke(object? target, string name, params object?[] args) => throw new NotImplementedException();
+            foreach (MethodInfo method in FindOverloads(name))
+            {
+                if (MethodCollector.ParametersEqual(method.GetParameters(), parameterTypes))
+                    return GetOrBuildInvoker(method);
+            }
+
+            throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(name, parameterTypes));
+        }
+
+        /// <summary>
+        /// GetInvoker(name) 결과를 이름으로 캐싱해 호출한다. static 메서드는 target 을 무시한다.
+        /// 값 타입 target 은 박스 안의 값으로 호출하므로, 값을 바꾸는 메서드는 박스 원본을 수정한다.
+        /// </summary>
+        public object? Invoke(object? target, string name, params object?[] args)
+        {
+            if (!_invokerByName.TryGetValue(name, out ProbeInvoker? invoker))
+                invoker = _invokerByName.GetOrAdd(name, GetInvoker(name));
+            return invoker(target, args);
+        }
+
+        private MethodInfo[] FindOverloads(string name)
+        {
+            if (name is null)
+                throw new ArgumentNullException(nameof(name));
+            return _methods.Value.TryGetValue(name, out MethodInfo[]? overloads) ? overloads : throw new MemberNotFoundException(Type, name);
+        }
+
+        private ProbeInvoker GetOrBuildInvoker(MethodInfo method)
+        {
+            if (_invokerCache.TryGetValue(method, out ProbeInvoker? cached))
+                return cached;
+            return _invokerCache.GetOrAdd(method, _builder.BuildInvoker(method));
+        }
     }
 }

@@ -226,11 +226,80 @@ namespace ReflectProbe.Internal
             return (RefSetter<T, TValue>)method.CreateDelegate(typeof(RefSetter<T, TValue>));
         }
 
-        public override Func<object>? BuildDefaultFactory(Type type) => throw new NotImplementedException();
+        public override Func<T> BuildDefaultFactory<T>(ConstructorInfo? constructor)
+        {
+            Type tType = typeof(T);
+            DynamicMethod method = CreateMethod("ProbeNew_" + tType.Name, tType, Type.EmptyTypes, tType);
+            ILGenerator il = method.GetILGenerator();
 
-        public override ProbeFactory BuildFactory(ConstructorInfo constructor) => throw new NotImplementedException();
+            if (constructor != null)
+            {
+                il.Emit(OpCodes.Newobj, constructor);           // new T()
+            }
+            else
+            {
+                LocalBuilder value = il.DeclareLocal(tType);    // 생성자 없는 struct : default(T)
+                il.Emit(OpCodes.Ldloca_S, value);
+                il.Emit(OpCodes.Initobj, tType);
+                il.Emit(OpCodes.Ldloc, value);
+            }
 
-        public override ProbeInvoker BuildInvoker(MethodInfo method) => throw new NotImplementedException();
+            il.Emit(OpCodes.Ret);
+            return (Func<T>)method.CreateDelegate(typeof(Func<T>));
+        }
+
+        public override ProbeFactory BuildFactory(ConstructorInfo constructor)
+        {
+            Type owner = constructor.DeclaringType!;
+            DynamicMethod method = CreateMethod("ProbeNew_" + owner.Name, typeof(object), new[] { typeof(object?[]) }, owner);
+            ILGenerator il = method.GetILGenerator();
+
+            EmitLoadArguments(il, OpCodes.Ldarg_0, constructor.GetParameters());
+            il.Emit(OpCodes.Newobj, constructor);
+            ILEmitHelpers.EmitConvertToObject(il, owner);
+            il.Emit(OpCodes.Ret);
+            return (ProbeFactory)method.CreateDelegate(typeof(ProbeFactory));
+        }
+
+        public override ProbeInvoker BuildInvoker(MethodInfo method)
+        {
+            Type owner = method.DeclaringType!;
+            DynamicMethod dynamicMethod = CreateMethod(
+                $"ProbeInvoke_{owner.Name}_{method.Name}",
+                typeof(object),
+                new[] { typeof(object), typeof(object?[]) },
+                owner);
+            ILGenerator il = dynamicMethod.GetILGenerator();
+
+            if (!method.IsStatic)
+            {
+                il.Emit(OpCodes.Ldarg_0);
+                ILEmitHelpers.EmitLoadTarget(il, owner);       // class → castclass, struct → unbox (박스 안 주소)
+            }
+
+            EmitLoadArguments(il, OpCodes.Ldarg_1, method.GetParameters());
+            EmitCall(il, method);
+
+            if (method.ReturnType == typeof(void))
+                il.Emit(OpCodes.Ldnull);                        // void → null
+            else
+                ILEmitHelpers.EmitConvertToObject(il, method.ReturnType);
+
+            il.Emit(OpCodes.Ret);
+            return (ProbeInvoker)dynamicMethod.CreateDelegate(typeof(ProbeInvoker));
+        }
+
+        /// <summary>args[i] 를 꺼내 매개변수 타입으로 바꿔 스택에 올린다. 개수 · 타입 검사는 하지 않는다 (설계 결정 17).</summary>
+        private static void EmitLoadArguments(ILGenerator il, OpCode loadArray, ParameterInfo[] parameters)
+        {
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                il.Emit(loadArray);
+                il.Emit(OpCodes.Ldc_I4, i);
+                il.Emit(OpCodes.Ldelem_Ref);
+                ILEmitHelpers.EmitConvertFromObject(il, parameters[i].ParameterType);
+            }
+        }
 
         /// <summary>인터페이스·배열은 DynamicMethod owner 가 될 수 없어 모듈 소속으로 만든다.</summary>
         private static DynamicMethod CreateMethod(string name, Type returnType, Type[] parameterTypes, Type owner)

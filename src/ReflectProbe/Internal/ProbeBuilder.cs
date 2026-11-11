@@ -27,11 +27,16 @@ namespace ReflectProbe.Internal
 
         public abstract RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member);
 
-        /// <summary>매개변수 없는 생성자 또는 값 타입 기본값. 둘 다 불가능하면 null.</summary>
-        public abstract Func<object>? BuildDefaultFactory(Type type);
+        /// <summary>
+        /// 매개변수 없는 생성자로 T 를 만든다. constructor 가 null 이면 값 타입 기본값(initobj).
+        /// 생성 가능 여부(추상 타입, 생성자 없음)는 호출 측(TypeProbe)이 판단한다.
+        /// </summary>
+        public abstract Func<T> BuildDefaultFactory<T>(ConstructorInfo? constructor);
 
+        /// <summary>args[i] 를 매개변수 타입으로 바꿔 생성자를 호출한다. 값 타입 결과는 박싱한다.</summary>
         public abstract ProbeFactory BuildFactory(ConstructorInfo constructor);
 
+        /// <summary>target · args 를 받아 메서드를 호출한다. void 는 null, 값 타입 반환은 박싱한다.</summary>
         public abstract ProbeInvoker BuildInvoker(MethodInfo method);
     }
 }

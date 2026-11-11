@@ -77,7 +77,7 @@ namespace ReflectProbe.Internal
             return true;
         }
 
-        private static BindingFlags ToBindingFlags(ProbeScope scope)
+        internal static BindingFlags ToBindingFlags(ProbeScope scope)
         {
             BindingFlags flags = 0;
             if ((scope & ProbeScope.Public) != 0)
@@ -91,6 +91,6 @@ namespace ReflectProbe.Internal
             return flags;
         }
 
-        private static bool IsUnsupportedType(Type type) => type.IsByRef || type.IsPointer || type.IsByRefLike;
+        internal static bool IsUnsupportedType(Type type) => type.IsByRef || type.IsPointer || type.IsByRefLike;
     }
 }
