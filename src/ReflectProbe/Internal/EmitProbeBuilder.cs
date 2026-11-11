@@ -289,6 +289,76 @@ namespace ReflectProbe.Internal
             return (ProbeInvoker)dynamicMethod.CreateDelegate(typeof(ProbeInvoker));
         }
 
+        public override Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType)
+        {
+            Type owner = constructor.DeclaringType!;
+            Type[] parameterTypes = DelegateSignature.ParameterTypes(delegateType);
+            DynamicMethod method = CreateMethod("ProbeNewTyped_" + owner.Name, owner, parameterTypes, owner);
+            ILGenerator il = method.GetILGenerator();
+
+            for (int i = 0; i < parameterTypes.Length; i++)
+                EmitLdarg(il, i);                               // 인자를 그대로 — 배열 · unbox 없음
+            il.Emit(OpCodes.Newobj, constructor);
+            il.Emit(OpCodes.Ret);
+            return method.CreateDelegate(delegateType);
+        }
+
+        public override Delegate BuildTypedInvoker(MethodInfo method, Type delegateType)
+        {
+            Type owner = method.DeclaringType!;
+            Type[] parameterTypes = DelegateSignature.ParameterTypes(delegateType);
+            DynamicMethod dynamicMethod = CreateMethod(
+                $"ProbeInvokeTyped_{owner.Name}_{method.Name}",
+                method.ReturnType,
+                parameterTypes,
+                owner);
+            ILGenerator il = dynamicMethod.GetILGenerator();
+
+            int first = 0;
+            if (!method.IsStatic)
+            {
+                Type targetType = parameterTypes[0];
+                if (owner.IsValueType)
+                {
+                    // ref T 는 이미 주소, T 는 매개변수 주소 (사본에 호출)
+                    if (targetType.IsByRef)
+                        il.Emit(OpCodes.Ldarg_0);
+                    else
+                        il.Emit(OpCodes.Ldarga_S, (byte)0);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldarg_0);
+                    if (!owner.IsAssignableFrom(targetType))
+                        il.Emit(OpCodes.Castclass, owner);     // object · 부모 타입으로 받은 대상
+                }
+                first = 1;
+            }
+
+            for (int i = first; i < parameterTypes.Length; i++)
+                EmitLdarg(il, i);
+            EmitCall(il, method);
+            il.Emit(OpCodes.Ret);
+            return dynamicMethod.CreateDelegate(delegateType);
+        }
+
+        private static void EmitLdarg(ILGenerator il, int index)
+        {
+            switch (index)
+            {
+                case 0: il.Emit(OpCodes.Ldarg_0); break;
+                case 1: il.Emit(OpCodes.Ldarg_1); break;
+                case 2: il.Emit(OpCodes.Ldarg_2); break;
+                case 3: il.Emit(OpCodes.Ldarg_3); break;
+                default:
+                    if (index <= byte.MaxValue)
+                        il.Emit(OpCodes.Ldarg_S, (byte)index);
+                    else
+                        il.Emit(OpCodes.Ldarg, (short)index);
+                    break;
+            }
+        }
+
         /// <summary>args[i] 를 꺼내 매개변수 타입으로 바꿔 스택에 올린다. 개수 · 타입 검사는 하지 않는다 (설계 결정 17).</summary>
         private static void EmitLoadArguments(ILGenerator il, OpCode loadArray, ParameterInfo[] parameters)
         {

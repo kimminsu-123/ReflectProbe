@@ -55,6 +55,8 @@ public class ConstructorMethodBenchmarks
     private TypeProbe<Enemy> _typedProbe = null!;
     private ProbeFactory _factory = null!;
     private ProbeInvoker _attack = null!;
+    private Func<int, int, Enemy> _typedFactory = null!;
+    private Func<Enemy, int, int> _typedAttack = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -67,6 +69,8 @@ public class ConstructorMethodBenchmarks
         _typedProbe = TypeProbe.Of<Enemy>();
         _factory = _probe.GetFactory(typeof(int), typeof(int));
         _attack = _probe.GetInvoker(nameof(Enemy.Attack));
+        _typedFactory = _probe.GetFactory<Func<int, int, Enemy>>();
+        _typedAttack = _probe.GetInvoker<Func<Enemy, int, int>>(nameof(Enemy.Attack));
         _probe.CreateInstance();                       // 기본 팩토리 생성
         _probe.Invoke(_enemy, nameof(Enemy.Attack), 2); // 이름 캐시 채우기
     }
@@ -104,6 +108,10 @@ public class ConstructorMethodBenchmarks
     [Benchmark, BenchmarkCategory("WithArgs")]
     public object ProbeFactory_WithArgs() => _factory(new object?[] { 100, 50 });
 
+    // 강타입 : 인자 배열 · 박싱 없음 (5주 Emit_Typed_WithArgs 와 같은 IL)
+    [Benchmark, BenchmarkCategory("WithArgs")]
+    public Enemy ProbeFactory_Typed() => _typedFactory(100, 50);
+
     // ---------------- Method : enemy.Attack(2) ----------------
 
     [Benchmark(Baseline = true), BenchmarkCategory("Method")]
@@ -114,6 +122,10 @@ public class ConstructorMethodBenchmarks
 
     [Benchmark, BenchmarkCategory("Method")]
     public int ProbeInvoker_Call() => (int)_attack(_enemy, new object?[] { 2 })!;
+
+    // 강타입 : 인자 배열 · 박싱 없음 (5주 Emit_Typed 와 같은 IL)
+    [Benchmark, BenchmarkCategory("Method")]
+    public int ProbeInvoker_Typed() => _typedAttack(_enemy, 2);
 
     // 이름 → Invoker 캐시 조회까지 포함
     [Benchmark, BenchmarkCategory("Method")]

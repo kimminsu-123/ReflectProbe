@@ -27,5 +27,9 @@ namespace ReflectProbe.Internal
         public override ProbeFactory BuildFactory(ConstructorInfo constructor) => throw new NotImplementedException();
 
         public override ProbeInvoker BuildInvoker(MethodInfo method) => throw new NotImplementedException();
+
+        public override Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType) => throw new NotImplementedException();
+
+        public override Delegate BuildTypedInvoker(MethodInfo method, Type delegateType) => throw new NotImplementedException();
     }
 }

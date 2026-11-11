@@ -82,6 +82,45 @@ namespace ReflectProbe.Internal
             return true;
         }
 
+        /// <summary>
+        /// 강타입 Invoker 시그니처 일치 (결정 27).
+        /// static : 델리게이트 매개변수 = 메서드 매개변수. 인스턴스 : 첫 매개변수가 대상, 나머지 = 메서드 매개변수.
+        /// 매개변수 · 반환 타입은 정확히 일치해야 하고, 대상만 IsTargetCompatible 규칙으로 변환을 허용한다.
+        /// </summary>
+        public static bool MatchesInvoker(MethodInfo method, Type[] delegateParameters, Type delegateReturn)
+        {
+            if (method.ReturnType != delegateReturn)
+                return false;
+
+            ParameterInfo[] parameters = method.GetParameters();
+            int offset = method.IsStatic ? 0 : 1;
+            if (delegateParameters.Length != parameters.Length + offset)
+                return false;
+            if (!method.IsStatic && !IsTargetCompatible(delegateParameters[0], method.DeclaringType!))
+                return false;
+
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (parameters[i].ParameterType != delegateParameters[i + offset])
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 대상 매개변수 규칙. struct 는 T(사본) 또는 ref T(원본).
+        /// class 는 선언 타입 · 파생 타입(변환 없음) 또는 부모 타입 · object · 인터페이스(castclass).
+        /// </summary>
+        private static bool IsTargetCompatible(Type target, Type declaringType)
+        {
+            if (declaringType.IsValueType)
+                return target == declaringType || target == declaringType.MakeByRefType();
+
+            return !target.IsValueType && !target.IsByRef
+                && (declaringType.IsAssignableFrom(target) || target.IsAssignableFrom(declaringType));
+        }
+
         /// <summary>예외 메시지용 시그니처 문자열. "Attack(Int32, Int32)"</summary>
         public static string FormatSignature(string name, Type[] parameterTypes)
         {
@@ -90,6 +129,10 @@ namespace ReflectProbe.Internal
                 names[i] = parameterTypes[i]?.Name ?? "null";
             return name + "(" + string.Join(", ", names) + ")";
         }
+
+        /// <summary>예외 메시지용 강타입 시그니처. "Attack(Enemy, Int32) : Int32"</summary>
+        public static string FormatSignature(string name, Type[] parameterTypes, Type returnType)
+            => FormatSignature(name, parameterTypes) + " : " + returnType.Name;
 
         private static bool ContainsSameParameters(List<MethodInfo> overloads, MethodInfo method)
         {

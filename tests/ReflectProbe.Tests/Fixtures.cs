@@ -152,6 +152,16 @@ internal struct Counter
     public override string ToString() => "Counter(" + Count + ")";
 }
 
+/// <summary>같은 델리게이트 시그니처에 static 과 인스턴스 메서드가 모두 맞는 경우. Func&lt;Calc, int, int&gt; 는 모호하다.</summary>
+internal class Calc
+{
+    public int Twice(int x) => x * 2;
+    public static int Twice(Calc calc, int x) => x * 2;
+}
+
+/// <summary>struct 원본을 바꾸는 강타입 Invoker 용 델리게이트.</summary>
+internal delegate void CounterAction(ref Counter counter);
+
 /// <summary>매개변수 없는 생성자를 직접 선언한 struct (C# 10). initobj 가 아니라 이 생성자가 불려야 한다.</summary>
 internal struct DefaultedStruct
 {

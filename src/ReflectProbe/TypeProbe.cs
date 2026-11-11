@@ -28,6 +28,9 @@ namespace ReflectProbe
         private readonly ConcurrentDictionary<MethodInfo, ProbeInvoker> _invokerCache = new();
         private readonly ConcurrentDictionary<string, ProbeInvoker> _invokerByName = new(StringComparer.Ordinal);
 
+        // 강타입 Factory · Invoker. 같은 생성자 · 메서드라도 델리게이트 타입마다 IL 이 다르다.
+        private readonly ConcurrentDictionary<(MemberInfo, Type), Delegate> _typedCache = new();
+
         private protected TypeProbe(Type type, ProbeScope scope, ProbeBuilder builder)
         {
             Type = type;
@@ -190,6 +193,65 @@ namespace ReflectProbe
             if (!_invokerByName.TryGetValue(name, out ProbeInvoker? invoker))
                 invoker = _invokerByName.GetOrAdd(name, GetInvoker(name));
             return invoker(target, args);
+        }
+
+        // ---------- 강타입 생성자 · 메서드 (결정 27) ----------
+
+        /// <summary>
+        /// 델리게이트 시그니처 그대로 생성자를 호출한다. 매개변수 · 반환 타입은 정확히 일치해야 한다.
+        /// <code>var create = probe.GetFactory&lt;Func&lt;int, int, Enemy&gt;&gt;(); create(100, 50);</code>
+        /// 인자 배열 · 박싱이 없어 할당은 만들어지는 객체뿐이다. 맞는 생성자가 없으면 MemberNotFoundException.
+        /// </summary>
+        public TDelegate GetFactory<TDelegate>() where TDelegate : Delegate
+        {
+            Type delegateType = typeof(TDelegate);
+            Type returnType = DelegateSignature.InvokeMethod(delegateType).ReturnType;
+            Type[] parameterTypes = DelegateSignature.ParameterTypes(delegateType);
+
+            ConstructorInfo? constructor = returnType == Type ? MethodCollector.FindConstructor(Type, Scope, parameterTypes) : null;
+            if (constructor == null)
+                throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(".ctor", parameterTypes, returnType));
+            return (TDelegate)GetOrBuildTyped(constructor, delegateType);
+        }
+
+        /// <summary>
+        /// 델리게이트 시그니처 그대로 메서드를 호출한다. 인스턴스 메서드는 첫 매개변수가 대상이다.
+        /// <code>var attack = probe.GetInvoker&lt;Func&lt;Enemy, int, int&gt;&gt;("Attack"); attack(enemy, 2);</code>
+        /// 매개변수 타입이 오버로드를 정하므로 이름이 같은 메서드가 여러 개여도 된다. 매개변수 · 반환 타입은 정확히 일치,
+        /// 대상은 class 면 부모 타입 · object 도 허용(castclass), struct 면 ref T(원본 수정) 또는 T(사본).
+        /// 맞는 메서드가 없으면 MemberNotFoundException, static 과 인스턴스가 모두 맞으면 AmbiguousMemberException.
+        /// </summary>
+        public TDelegate GetInvoker<TDelegate>(string name) where TDelegate : Delegate
+        {
+            Type delegateType = typeof(TDelegate);
+            Type returnType = DelegateSignature.InvokeMethod(delegateType).ReturnType;
+            Type[] parameterTypes = DelegateSignature.ParameterTypes(delegateType);
+
+            MethodInfo? match = null;
+            foreach (MethodInfo method in FindOverloads(name))
+            {
+                if (!MethodCollector.MatchesInvoker(method, parameterTypes, returnType))
+                    continue;
+                if (match != null)
+                    throw new AmbiguousMemberException(Type, name);
+                match = method;
+            }
+
+            if (match == null)
+                throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(name, parameterTypes, returnType));
+            return (TDelegate)GetOrBuildTyped(match, delegateType);
+        }
+
+        private Delegate GetOrBuildTyped(MemberInfo member, Type delegateType)
+        {
+            var key = (member, delegateType);
+            if (_typedCache.TryGetValue(key, out Delegate? cached))
+                return cached;
+
+            Delegate built = member is ConstructorInfo constructor
+                ? _builder.BuildTypedFactory(constructor, delegateType)
+                : _builder.BuildTypedInvoker((MethodInfo)member, delegateType);
+            return _typedCache.GetOrAdd(key, built);
         }
 
         private MethodInfo[] FindOverloads(string name)

@@ -38,5 +38,17 @@ namespace ReflectProbe.Internal
 
         /// <summary>target · args 를 받아 메서드를 호출한다. void 는 null, 값 타입 반환은 박싱한다.</summary>
         public abstract ProbeInvoker BuildInvoker(MethodInfo method);
+
+        /// <summary>
+        /// delegateType 시그니처 그대로 생성자를 호출하는 델리게이트. 인자 배열 · 박싱이 없다.
+        /// 시그니처 일치 여부는 호출 측(MethodCollector.MatchesFactory)이 확인한다.
+        /// </summary>
+        public abstract Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType);
+
+        /// <summary>
+        /// delegateType 시그니처 그대로 메서드를 호출하는 델리게이트. 인스턴스 메서드는 첫 매개변수가 대상이다.
+        /// 시그니처 일치 여부는 호출 측(MethodCollector.MatchesInvoker)이 확인한다.
+        /// </summary>
+        public abstract Delegate BuildTypedInvoker(MethodInfo method, Type delegateType);
     }
 }
