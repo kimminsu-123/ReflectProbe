@@ -22,10 +22,14 @@ namespace ReflectProbe.Internal
 
         public override RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member) => throw new NotImplementedException();
 
-        public override Func<object>? BuildDefaultFactory(Type type) => throw new NotImplementedException();
+        public override Func<T> BuildDefaultFactory<T>(ConstructorInfo? constructor) => throw new NotImplementedException();
 
         public override ProbeFactory BuildFactory(ConstructorInfo constructor) => throw new NotImplementedException();
 
         public override ProbeInvoker BuildInvoker(MethodInfo method) => throw new NotImplementedException();
+
+        public override Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType) => throw new NotImplementedException();
+
+        public override Delegate BuildTypedInvoker(MethodInfo method, Type delegateType) => throw new NotImplementedException();
     }
 }

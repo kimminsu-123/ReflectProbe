@@ -10,7 +10,9 @@ namespace ReflectProbe
     {
         public ObjectProbe(object target, ProbeScope scope = ProbeScope.All)
         {
-            throw new NotImplementedException();
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            Target = target;
+            Probe = TypeProbe.Of(target.GetType(), scope);
         }
 
         public object Target { get; }
@@ -19,14 +21,14 @@ namespace ReflectProbe
 
         public object? this[string name]
         {
-            get => throw new NotImplementedException();
-            set => throw new NotImplementedException();
+            get => Probe[Target, name];
+            set => Probe[Target, name] = value;
         }
 
-        public bool TryGetValue(string name, out object? value) => throw new NotImplementedException();
+        public bool TryGetValue(string name, out object? value) => Probe.TryGetValue(Target, name, out value);
 
-        public bool TrySetValue(string name, object? value) => throw new NotImplementedException();
+        public bool TrySetValue(string name, object? value) => Probe.TrySetValue(Target, name, value);
 
-        public object? Invoke(string name, params object?[] args) => throw new NotImplementedException();
+        public object? Invoke(string name, params object?[] args) => Probe.Invoke(Target, name, args);
     }
 }
