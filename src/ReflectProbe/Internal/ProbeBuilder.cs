@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Threading;
 
 namespace ReflectProbe.Internal
 {
@@ -9,9 +10,24 @@ namespace ReflectProbe.Internal
     /// </summary>
     internal abstract class ProbeBuilder
     {
-        /// <summary>DynamicCodeSupport 판단 결과에 따른 프로세스 기본 빌더.</summary>
-        /// <remarks>Reflection 폴백 연동(13주) 전까지는 Emit 고정.</remarks>
-        public static ProbeBuilder Current { get; } = new EmitProbeBuilder();
+        private static ProbeBuilder? _current;
+
+        /// <summary>DynamicCodeSupport 판단 결과에 따른 프로세스 기본 빌더. 처음 읽을 때 1회 정해진다.</summary>
+        public static ProbeBuilder Current
+            => Volatile.Read(ref _current) ?? InitializeCurrent(DynamicCodeSupport.IsSupported ? new EmitProbeBuilder() : new ReflectionProbeBuilder());
+
+        /// <summary>
+        /// 테스트 전용 : 프로세스 기본 빌더를 고정한다. Current 가 한 번이라도 읽히기 전에 불러야 한다
+        /// (Reflection 모드 테스트 프로젝트의 모듈 초기화). 이미 다른 빌더로 정해졌으면 InvalidOperationException.
+        /// </summary>
+        internal static void ForceCurrent(ProbeBuilder builder)
+        {
+            if (InitializeCurrent(builder) != builder)
+                throw new InvalidOperationException($"ProbeBuilder.Current 가 이미 {_current!.Mode} 로 정해졌습니다.");
+        }
+
+        private static ProbeBuilder InitializeCurrent(ProbeBuilder builder)
+            => Interlocked.CompareExchange(ref _current, builder, null) ?? builder;
 
         public abstract ProbeMode Mode { get; }
 

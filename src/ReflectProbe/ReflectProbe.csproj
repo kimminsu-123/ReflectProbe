@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ReflectProbe.Tests" />
+    <InternalsVisibleTo Include="ReflectProbe.Tests.Reflection" />
     <InternalsVisibleTo Include="ReflectProbe.Benchmarks" />
   </ItemGroup>
 

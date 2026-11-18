@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ReflectProbe.Tests 와 같은 테스트 파일을 Reflection 폴백 모드로 실행한다.
+    ForceReflectionMode.cs 의 모듈 초기화가 ProbeBuilder.Current 를 ReflectionProbeBuilder 로 고정한다.
+    별도 프로세스(테스트 어셈블리 단위)라 Emit 테스트와 섞이지 않는다.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <DefineConstants>$(DefineConstants);REFLECTION_MODE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ReflectProbe.Tests\**\*.cs"
+             Exclude="..\ReflectProbe.Tests\bin\**;..\ReflectProbe.Tests\obj\**"
+             LinkBase="Shared" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <Import Project="..\ProbeLibraryReference.targets" />
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

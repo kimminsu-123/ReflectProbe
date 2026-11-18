@@ -76,7 +76,7 @@ public class TypedInvokerTests
         Assert.Equal(3, TypeProbe.Of<IShape>().GetInvoker<Func<IShape, int>>("Sides")(new Triangle()));
     }
 
-    [Fact]
+    [EmitOnlyFact]
     public void Invoker_StructByRef_MutatesOriginal()
     {
         var counter = new Counter(1);
@@ -85,6 +85,24 @@ public class TypedInvokerTests
 
         Assert.Equal(2, counter.Count);
     }
+
+#if REFLECTION_MODE
+    // 결정 34 : Unity IL2CPP 의 식 트리 인터프리터가 ref 매개변수 델리게이트를 만들지 못한다 (NotImplementedException "byref delegate").
+    // 런타임마다 동작이 갈리지 않도록 폴백에서는 항상 NotSupportedException.
+    [Fact]
+    public void Reflection_RefParameterDelegate_ThrowsNotSupported()
+    {
+        var probe = TypeProbe.Of<Counter>();
+
+        var e = Assert.Throws<NotSupportedException>(() => probe.GetInvoker<CounterAction>("Increment"));
+        Assert.Contains("ref", e.Message);
+
+        // 대안 : 대상을 T 로 받는 강타입(사본) 또는 object 기반 Invoker(박스 원본 수정)
+        object boxed = new Counter(1);
+        probe.GetInvoker("Increment", Type.EmptyTypes)(boxed, Array.Empty<object>());
+        Assert.Equal(2, ((Counter)boxed).Count);
+    }
+#endif
 
     [Fact]
     public void Invoker_StructByValue_CallsOnCopy()
@@ -140,7 +158,7 @@ public class TypedInvokerTests
 
     // 할당 측정 테스트는 AggressiveOptimization 으로 바로 최적화 컴파일한다.
     // Tier0(PGO 계측) 코드가 루프 도중 OSR 로 바뀌는 순간 런타임이 1회 할당해 측정에 섞인다 (12주 확인 : 24 B, 호출 수와 무관).
-    [Fact]
+    [EmitOnlyFact]
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void Invoker_Call_DoesNotAllocate()
     {
@@ -181,7 +199,7 @@ public class TypedInvokerTests
         Assert.IsType<Enemy>(_probe.GetFactory<Func<Enemy>>()());
     }
 
-    [Fact]
+    [EmitOnlyFact]
     [MethodImpl(MethodImplOptions.AggressiveOptimization)] // Invoker_Call_DoesNotAllocate 주석 참고
     public void Factory_Struct_DoesNotAllocate()
     {

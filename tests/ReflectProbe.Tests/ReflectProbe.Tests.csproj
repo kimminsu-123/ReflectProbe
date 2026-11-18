@@ -13,9 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\ReflectProbe\ReflectProbe.csproj" />
-  </ItemGroup>
+  <Import Project="..\ProbeLibraryReference.targets" />
 
   <ItemGroup>
     <Using Include="Xunit" />

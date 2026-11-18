@@ -1,0 +1,23 @@
+<Project>
+
+  <!--
+    두 테스트 프로젝트(Emit / Reflection)가 함께 쓰는 라이브러리 참조.
+    기본 : net10.0 테스트 → 가장 가까운 net8.0 결과물.
+    -p:ProbeLibraryTfm=netstandard2.1 : netstandard2.1 결과물을 강제로 참조해 같은 테스트를 돌린다 (PROBE_NETSTANDARD).
+    결과물이 섞이지 않도록 이 경우는 artifacts 경로를 따로 지정해 실행한다 (tests/run-matrix.ps1).
+  -->
+
+  <ItemGroup Condition="'$(ProbeLibraryTfm)' == ''">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\ReflectProbe\ReflectProbe.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ProbeLibraryTfm)' != ''">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\ReflectProbe\ReflectProbe.csproj"
+                      SetTargetFramework="TargetFramework=$(ProbeLibraryTfm)" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(ProbeLibraryTfm)' == 'netstandard2.1'">
+    <DefineConstants>$(DefineConstants);PROBE_NETSTANDARD</DefineConstants>
+  </PropertyGroup>
+
+</Project>

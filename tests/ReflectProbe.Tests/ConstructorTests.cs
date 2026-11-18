@@ -69,7 +69,7 @@ public class ConstructorTests
         Assert.Throws<MemberNotFoundException>(() => probe.CreateInstance());
     }
 
-    [Fact]
+    [EmitOnlyFact]
     [MethodImpl(MethodImplOptions.AggressiveOptimization)] // TypedInvokerTests.Invoker_Call_DoesNotAllocate 주석 참고
     public void CreateInstance_StructGeneric_DoesNotAllocate()
     {

@@ -62,9 +62,4 @@ public class ProbeCacheTests
         Assert.Throws<MemberNotFoundException>(() => probe[new object(), "x"]);
     }
 
-    [Fact]
-    public void Mode_IsEmitOnCoreClr()
-    {
-        Assert.Equal(ProbeMode.Emit, TypeProbe.Mode);
-    }
 }
