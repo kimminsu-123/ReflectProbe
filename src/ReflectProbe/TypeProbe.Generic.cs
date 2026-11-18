@@ -32,9 +32,8 @@ namespace ReflectProbe
                 return (Getter<T, TValue>)cached;
             if (!Members.TryGet(name, out ProbeMember? member))
                 throw new MemberNotFoundException(typeof(T), name);
-            Getter<T, TValue> getter = _builder.BuildGetter<T, TValue>(member!);
-            _getterCache.TryAdd(key, getter);
-            return getter;
+            // 동시에 2번 만들어져도 게시된 1개를 돌려준다 (TryAdd 후 지역 변수를 반환하면 진 스레드가 다른 인스턴스를 받는다 — 13주 수정).
+            return (Getter<T, TValue>)_getterCache.GetOrAdd(key, _builder.BuildGetter<T, TValue>(member!));
         }
 
         /// <summary>T 가 참조 타입일 때만. 값 타입이면 RefSetter 를 쓴다.</summary>
@@ -45,9 +44,7 @@ namespace ReflectProbe
                 return (Setter<T, TValue>)cached;
             if (!Members.TryGet(name, out ProbeMember? member))
                 throw new MemberNotFoundException(typeof(T), name);
-            Setter<T, TValue> setter = _builder.BuildSetter<T, TValue>(member!);
-            _setterCache.TryAdd(key, setter);
-            return setter;
+            return (Setter<T, TValue>)_setterCache.GetOrAdd(key, _builder.BuildSetter<T, TValue>(member!));
         }
 
         /// <summary>값 타입 대상의 원본을 바꿀 수 있다. 참조 타입에도 쓸 수 있다.</summary>
@@ -58,9 +55,7 @@ namespace ReflectProbe
                 return (RefSetter<T, TValue>)cached;
             if (!Members.TryGet(name, out ProbeMember? member))
                 throw new MemberNotFoundException(typeof(T), name);
-            RefSetter<T, TValue> refSetter = _builder.BuildRefSetter<T, TValue>(member!);
-            _refSetterCache.TryAdd(key, refSetter);
-            return refSetter;
+            return (RefSetter<T, TValue>)_refSetterCache.GetOrAdd(key, _builder.BuildRefSetter<T, TValue>(member!));
         }
 
         /// <summary>매개변수 없는 생성자로 T 를 만든다. 값 타입도 박싱하지 않는다. 만들 수 없으면 MemberNotFoundException.</summary>
