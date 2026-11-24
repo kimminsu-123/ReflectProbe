@@ -57,7 +57,7 @@ namespace ReflectProbe.Internal
 
         /// <summary>
         /// delegateType 시그니처 그대로 생성자를 호출하는 델리게이트. 인자 배열 · 박싱이 없다.
-        /// 시그니처 일치 여부는 호출 측(MethodCollector.MatchesFactory)이 확인한다.
+        /// 시그니처 일치 여부는 호출 측(MethodCollector.FindConstructor)이 확인한다.
         /// </summary>
         public abstract Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType);
 

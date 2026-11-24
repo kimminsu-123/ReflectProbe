@@ -98,7 +98,7 @@ namespace ReflectProbe.Internal
 
         public override ProbeFactory BuildFactory(ConstructorInfo constructor)
         {
-            Type[] parameterTypes = ParameterTypes(constructor);
+            Type[] parameterTypes = MethodCollector.ParameterTypes(constructor);
             return args => InvokeUnwrapped(constructor, null, ConvertArguments(args, parameterTypes))!;
         }
 
@@ -107,7 +107,7 @@ namespace ReflectProbe.Internal
         public override ProbeInvoker BuildInvoker(MethodInfo method)
         {
             Type owner = method.DeclaringType!;
-            Type[] parameterTypes = ParameterTypes(method);
+            Type[] parameterTypes = MethodCollector.ParameterTypes(method);
 
             if (method.IsStatic)
                 return (target, args) => InvokeUnwrapped(method, null, ConvertArguments(args, parameterTypes));
@@ -260,16 +260,7 @@ namespace ReflectProbe.Internal
             }
         }
 
-        private static Type[] ParameterTypes(MethodBase method)
-        {
-            ParameterInfo[] parameters = method.GetParameters();
-            var types = new Type[parameters.Length];
-            for (int i = 0; i < parameters.Length; i++)
-                types[i] = parameters[i].ParameterType;
-            return types;
-        }
-
-        /// <summary>델리게이트 매개변수. ref T 는 ByRef 매개변수(Type = T, IsByRef = true)가 된다.</summary>
+        /// <summary>델리게이트 매개변수. ref 매개변수는 ThrowIfByRefDelegate 가 미리 막는다.</summary>
         private static ParameterExpression[] CreateParameters(Type delegateType)
         {
             Type[] types = DelegateSignature.ParameterTypes(delegateType);

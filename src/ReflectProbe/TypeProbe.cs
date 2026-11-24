@@ -18,7 +18,7 @@ namespace ReflectProbe
         private readonly Action<int, object?, object?> _setter;
 
         // builder 는 테스트에서 ReflectionProbeBuilder 를 직접 넣을 수 있도록 생성자로 받는다.
-        private protected ProbeBuilder _builder;
+        private protected readonly ProbeBuilder _builder;
 
         // 메서드 목록은 Invoker 를 처음 찾을 때 1회 수집한다. (필드 접근만 쓰는 타입은 비용 없음)
         private readonly Lazy<Dictionary<string, MethodInfo[]>> _methods;
@@ -149,9 +149,7 @@ namespace ReflectProbe
             ConstructorInfo constructor = MethodCollector.FindConstructor(Type, Scope, parameterTypes)
                 ?? throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(".ctor", parameterTypes));
 
-            if (_factoryCache.TryGetValue(constructor, out ProbeFactory? cached))
-                return cached;
-            return _factoryCache.GetOrAdd(constructor, _builder.BuildFactory(constructor));
+            return _factoryCache.GetOrAdd(constructor, static (key, builder) => builder.BuildFactory(key), _builder);
         }
 
         private protected abstract bool HasDefaultFactory { get; }
@@ -243,16 +241,9 @@ namespace ReflectProbe
         }
 
         private Delegate GetOrBuildTyped(MemberInfo member, Type delegateType)
-        {
-            var key = (member, delegateType);
-            if (_typedCache.TryGetValue(key, out Delegate? cached))
-                return cached;
-
-            Delegate built = member is ConstructorInfo constructor
-                ? _builder.BuildTypedFactory(constructor, delegateType)
-                : _builder.BuildTypedInvoker((MethodInfo)member, delegateType);
-            return _typedCache.GetOrAdd(key, built);
-        }
+            => _typedCache.GetOrAdd((member, delegateType), static (key, builder) => key.Item1 is ConstructorInfo constructor
+                ? builder.BuildTypedFactory(constructor, key.Item2)
+                : builder.BuildTypedInvoker((MethodInfo)key.Item1, key.Item2), _builder);
 
         private MethodInfo[] FindOverloads(string name)
         {
@@ -262,10 +253,6 @@ namespace ReflectProbe
         }
 
         private ProbeInvoker GetOrBuildInvoker(MethodInfo method)
-        {
-            if (_invokerCache.TryGetValue(method, out ProbeInvoker? cached))
-                return cached;
-            return _invokerCache.GetOrAdd(method, _builder.BuildInvoker(method));
-        }
+            => _invokerCache.GetOrAdd(method, static (key, builder) => builder.BuildInvoker(key), _builder);
     }
 }

@@ -14,13 +14,6 @@ namespace ReflectProbe.Internal
             return delegateType.GetMethod("Invoke")!;
         }
 
-        public static Type[] ParameterTypes(Type delegateType)
-        {
-            ParameterInfo[] parameters = InvokeMethod(delegateType).GetParameters();
-            var types = new Type[parameters.Length];
-            for (int i = 0; i < parameters.Length; i++)
-                types[i] = parameters[i].ParameterType;
-            return types;
-        }
+        public static Type[] ParameterTypes(Type delegateType) => MethodCollector.ParameterTypes(InvokeMethod(delegateType));
     }
 }

@@ -68,6 +68,15 @@ namespace ReflectProbe.Internal
             return null;
         }
 
+        public static Type[] ParameterTypes(MethodBase method)
+        {
+            ParameterInfo[] parameters = method.GetParameters();
+            var types = new Type[parameters.Length];
+            for (int i = 0; i < parameters.Length; i++)
+                types[i] = parameters[i].ParameterType;
+            return types;
+        }
+
         public static bool ParametersEqual(ParameterInfo[] parameters, Type[] parameterTypes)
         {
             if (parameters.Length != parameterTypes.Length)
@@ -136,11 +145,7 @@ namespace ReflectProbe.Internal
 
         private static bool ContainsSameParameters(List<MethodInfo> overloads, MethodInfo method)
         {
-            ParameterInfo[] parameters = method.GetParameters();
-            var parameterTypes = new Type[parameters.Length];
-            for (int i = 0; i < parameters.Length; i++)
-                parameterTypes[i] = parameters[i].ParameterType;
-
+            Type[] parameterTypes = ParameterTypes(method);
             foreach (MethodInfo overload in overloads)
             {
                 if (ParametersEqual(overload.GetParameters(), parameterTypes))

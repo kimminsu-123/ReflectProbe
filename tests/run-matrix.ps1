@@ -1,4 +1,4 @@
-# 같은 테스트 세트를 라이브러리 결과물(net8.0 / netstandard2.1) × 접근 코드 생성 방식(Emit / Reflection) 4가지로 실행한다.
+﻿# 같은 테스트 세트를 라이브러리 결과물(net8.0 / netstandard2.1) × 접근 코드 생성 방식(Emit / Reflection) 4가지로 실행한다.
 # 실행마다 --artifacts-path 를 나눠 결과물이 섞이지 않게 한다.
 #   pwsh tests/run-matrix.ps1 [-Configuration Release]
 param(
