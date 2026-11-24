@@ -146,10 +146,12 @@ namespace ReflectProbe.Internal
         }
 
         /// <summary>
-        /// 박싱할 수 없는 타입. Type.IsFunctionPointer 는 .NET 8 부터라 netstandard2.1 과 같은 코드를 쓰기 위해
-        /// "BaseType 이 없는데 object · 인터페이스가 아닌 타입"(ref · 포인터 · 함수 포인터)으로 판단한다.
+        /// 박싱할 수 없는 타입 (ref struct · ref · 포인터 · 함수 포인터).
+        /// Type.IsFunctionPointer 는 .NET 8 부터라 "BaseType 이 없는데 object · 인터페이스가 아닌 타입" 으로 판단한다.
+        /// ref · 포인터는 따로 검사한다. Unity IL2CPP 는 ref 타입의 BaseType 이 null 이 아니다 (14주 WebGL 실측).
         /// </summary>
         internal static bool IsUnsupportedType(Type type)
-            => type.IsByRefLike || (type.BaseType == null && !type.IsInterface && type != typeof(object));
+            => type.IsByRefLike || type.IsByRef || type.IsPointer
+            || (type.BaseType == null && !type.IsInterface && type != typeof(object));
     }
 }
