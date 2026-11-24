@@ -12,7 +12,7 @@ namespace ReflectProbe.Benchmarks;
 //   N = (FirstGet 생성 비용 차이) / (히트 경로의 Reflection 1회 − 라이브러리 1회)
 // 라이브러리 자신의 JIT · 정적 초기화는 워밍업 반복에서 끝난다. (앱 시작 직후 첫 호출의 비용이 아니다)
 // 한 프로세스에서 반복을 많이 돌리지 않는다 : FastMember 는 모든 접근자를 한 동적 모듈에 쌓아서, 이미 만든 타입이 많을수록
-// 다음 타입이 느려진다 (2,000개에서 타입당 약 4.6배). 반복을 쌓으면 2만 개 상태를 재게 된다.
+// 다음 타입이 느려진다 (누적 조건은 CreationGrowthBenchmarks). 반복을 쌓으면 2만 개 상태를 재게 된다.
 // 그래서 워밍업 1회 · 측정 1회만 하고 프로세스를 10번 새로 띄운다 → "101 ~ 200 번째 타입" 의 비용이다.
 // 실행 : dotnet run -c Release -- --filter *CreationCost*
 [MemoryDiagnoser]
