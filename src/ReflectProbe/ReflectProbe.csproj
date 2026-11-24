@@ -4,12 +4,11 @@
     <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
     <RootNamespace>ReflectProbe</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- 스켈레톤 단계라 XML 주석 누락 경고는 리팩토링 단계(14주)에 정리한다. -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="ReflectProbe.Tests" />
+    <InternalsVisibleTo Include="ReflectProbe.Tests.Reflection" />
     <InternalsVisibleTo Include="ReflectProbe.Benchmarks" />
   </ItemGroup>
 

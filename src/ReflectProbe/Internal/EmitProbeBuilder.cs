@@ -46,11 +46,7 @@ namespace ReflectProbe.Internal
                     ILEmitHelpers.EmitLoadTarget(il, member.DeclaringType);
                 }
 
-                if (member.Info is FieldInfo field)
-                    il.Emit(member.IsStatic ? OpCodes.Ldsfld : OpCodes.Ldfld, field);
-                else
-                    EmitCall(il, member.GetMethod!);
-
+                EmitReadMember(il, member);
                 ILEmitHelpers.EmitConvertToObject(il, member.Type);
                 il.Emit(OpCodes.Ret);
             }
@@ -84,11 +80,7 @@ namespace ReflectProbe.Internal
                 il.Emit(OpCodes.Ldarg_2);
                 ILEmitHelpers.EmitConvertFromObject(il, member.Type);
 
-                if (member.Info is FieldInfo field)
-                    il.Emit(member.IsStatic ? OpCodes.Stsfld : OpCodes.Stfld, field);
-                else
-                    EmitCall(il, member.SetMethod!);
-
+                EmitWriteMember(il, member);
                 il.Emit(OpCodes.Ret);
             }
 
@@ -97,8 +89,7 @@ namespace ReflectProbe.Internal
 
         public override Getter<T, TValue> BuildGetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanRead)
-                throw new MemberNotReadableException(member.DeclaringType, member.Name);
+            EnsureGettable<TValue>(member);
 
             Type tType = typeof(T);
             Type tvType = typeof(TValue);
@@ -109,41 +100,24 @@ namespace ReflectProbe.Internal
                 member.DeclaringType);
             ILGenerator il = method.GetILGenerator();
 
+            // 멤버는 T 또는 T 의 부모가 선언한 것이라 대상 castclass 는 필요 없다. struct 는 매개변수(사본)의 주소로 읽는다.
             if (!member.IsStatic)
             {
                 if (tType.IsValueType)
                     il.Emit(OpCodes.Ldarga_S, (byte)0);
                 else
-                {
                     il.Emit(OpCodes.Ldarg_0);
-                    if (tType != member.DeclaringType)
-                        il.Emit(OpCodes.Castclass, member.DeclaringType);
-                }
             }
 
-            if (member.Info is FieldInfo getterField)
-                il.Emit(member.IsStatic ? OpCodes.Ldsfld : OpCodes.Ldfld, getterField);
-            else
-                EmitCall(il, member.GetMethod!);
-
-            if (tvType != member.Type)
-            {
-                if (member.Type.IsValueType && !tvType.IsValueType)
-                    il.Emit(OpCodes.Box, member.Type);
-                else if (!member.Type.IsValueType && tvType.IsValueType)
-                    il.Emit(OpCodes.Unbox_Any, tvType);
-                else if (!tvType.IsValueType)
-                    il.Emit(OpCodes.Castclass, tvType);
-            }
-
+            EmitReadMember(il, member);
+            ILEmitHelpers.EmitConvert(il, member.Type, tvType);
             il.Emit(OpCodes.Ret);
             return (Getter<T, TValue>)method.CreateDelegate(typeof(Getter<T, TValue>));
         }
 
         public override Setter<T, TValue> BuildSetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanWrite)
-                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureSettableByValue<T, TValue>(member);
 
             Type tType = typeof(T);
             Type tvType = typeof(TValue);
@@ -154,37 +128,17 @@ namespace ReflectProbe.Internal
                 member.DeclaringType);
             ILGenerator il = method.GetILGenerator();
 
+            // struct 인스턴스 멤버는 EnsureSettableByValue 가 막았으므로 대상은 항상 참조다.
             if (!member.IsStatic)
-            {
                 il.Emit(OpCodes.Ldarg_0);
-                if (!tType.IsValueType && tType != member.DeclaringType)
-                    il.Emit(OpCodes.Castclass, member.DeclaringType);
-            }
 
-            il.Emit(OpCodes.Ldarg_1);
-            if (tvType != member.Type)
-            {
-                if (tvType.IsValueType && !member.Type.IsValueType)
-                    il.Emit(OpCodes.Box, tvType);
-                else if (!tvType.IsValueType && member.Type.IsValueType)
-                    il.Emit(OpCodes.Unbox_Any, member.Type);
-                else if (!member.Type.IsValueType)
-                    il.Emit(OpCodes.Castclass, member.Type);
-            }
-
-            if (member.Info is FieldInfo setterField)
-                il.Emit(member.IsStatic ? OpCodes.Stsfld : OpCodes.Stfld, setterField);
-            else
-                EmitCall(il, member.SetMethod!);
-
-            il.Emit(OpCodes.Ret);
+            EmitAssign(il, member, tvType);
             return (Setter<T, TValue>)method.CreateDelegate(typeof(Setter<T, TValue>));
         }
 
         public override RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanWrite)
-                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureSettable<TValue>(member);
 
             Type tType = typeof(T);
             Type tvType = typeof(TValue);
@@ -197,32 +151,12 @@ namespace ReflectProbe.Internal
 
             if (!member.IsStatic)
             {
-                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Ldarg_0);               // struct : 원본 주소
                 if (!tType.IsValueType)
-                {
-                    il.Emit(OpCodes.Ldind_Ref);
-                    if (tType != member.DeclaringType)
-                        il.Emit(OpCodes.Castclass, member.DeclaringType);
-                }
+                    il.Emit(OpCodes.Ldind_Ref);         // class : 주소가 가리키는 참조
             }
 
-            il.Emit(OpCodes.Ldarg_1);
-            if (tvType != member.Type)
-            {
-                if (tvType.IsValueType && !member.Type.IsValueType)
-                    il.Emit(OpCodes.Box, tvType);
-                else if (!tvType.IsValueType && member.Type.IsValueType)
-                    il.Emit(OpCodes.Unbox_Any, member.Type);
-                else if (!member.Type.IsValueType)
-                    il.Emit(OpCodes.Castclass, member.Type);
-            }
-
-            if (member.Info is FieldInfo refSetterField)
-                il.Emit(member.IsStatic ? OpCodes.Stsfld : OpCodes.Stfld, refSetterField);
-            else
-                EmitCall(il, member.SetMethod!);
-
-            il.Emit(OpCodes.Ret);
+            EmitAssign(il, member, tvType);
             return (RefSetter<T, TValue>)method.CreateDelegate(typeof(RefSetter<T, TValue>));
         }
 
@@ -340,6 +274,33 @@ namespace ReflectProbe.Internal
             EmitCall(il, method);
             il.Emit(OpCodes.Ret);
             return dynamicMethod.CreateDelegate(delegateType);
+        }
+
+        /// <summary>대상(static 이면 없음)이 올라간 스택에서 필드 · 프로퍼티 값을 읽는다.</summary>
+        private static void EmitReadMember(ILGenerator il, ProbeMember member)
+        {
+            if (member.Info is FieldInfo field)
+                il.Emit(member.IsStatic ? OpCodes.Ldsfld : OpCodes.Ldfld, field);
+            else
+                EmitCall(il, member.GetMethod!);
+        }
+
+        /// <summary>대상(static 이면 없음)과 멤버 타입의 값이 올라간 스택에서 필드 · 프로퍼티에 쓴다.</summary>
+        private static void EmitWriteMember(ILGenerator il, ProbeMember member)
+        {
+            if (member.Info is FieldInfo field)
+                il.Emit(member.IsStatic ? OpCodes.Stsfld : OpCodes.Stfld, field);
+            else
+                EmitCall(il, member.SetMethod!);
+        }
+
+        /// <summary>강타입 Setter · RefSetter 공용 : 두 번째 매개변수를 멤버 타입으로 바꿔 쓰고 끝낸다.</summary>
+        private static void EmitAssign(ILGenerator il, ProbeMember member, Type valueType)
+        {
+            il.Emit(OpCodes.Ldarg_1);
+            ILEmitHelpers.EmitConvert(il, valueType, member.Type);
+            EmitWriteMember(il, member);
+            il.Emit(OpCodes.Ret);
         }
 
         private static void EmitLdarg(ILGenerator il, int index)

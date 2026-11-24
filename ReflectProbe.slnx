@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ReflectProbe.Tests/ReflectProbe.Tests.csproj" />
+    <Project Path="tests/ReflectProbe.Tests.Reflection/ReflectProbe.Tests.Reflection.csproj" />
   </Folder>
 </Solution>

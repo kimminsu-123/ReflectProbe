@@ -12,9 +12,8 @@ namespace ReflectProbe
     /// </summary>
     public sealed class TypeProbe<T> : TypeProbe
     {
-        private readonly ConcurrentDictionary<(string, Type), object> _getterCache = new();
-        private readonly ConcurrentDictionary<(string, Type), object> _setterCache = new();
-        private readonly ConcurrentDictionary<(string, Type), object> _refSetterCache = new();
+        // 키 = (멤버 이름, 델리게이트 타입). Getter / Setter / RefSetter 는 델리게이트 타입이 달라 한 캐시에 섞이지 않는다.
+        private readonly ConcurrentDictionary<(string, Type), Delegate> _accessorCache = new();
 
         // 매개변수 없는 생성자 팩토리. 처음 쓸 때 1회 판단·생성한다. null = 만들 수 없는 타입.
         private readonly Lazy<Func<T>?> _defaultFactory;
@@ -25,43 +24,23 @@ namespace ReflectProbe
             _defaultFactory = new Lazy<Func<T>?>(BuildDefaultFactory, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
+        /// <summary>
+        /// 멤버 1개를 박싱 없이 읽는 델리게이트. TValue 는 멤버 타입과 같거나 참조 변환 · 박싱이 되는 타입이어야 한다.
+        /// 없는 이름은 MemberNotFoundException, 읽을 수 없으면 MemberNotReadableException, 변환할 수 없는 값 타입이면 InvalidCastException.
+        /// </summary>
         public Getter<T, TValue> Getter<TValue>(string name)
-        {
-            var key = (name, typeof(TValue));
-            if (_getterCache.TryGetValue(key, out object? cached))
-                return (Getter<T, TValue>)cached;
-            if (!Members.TryGet(name, out ProbeMember? member))
-                throw new MemberNotFoundException(typeof(T), name);
-            Getter<T, TValue> getter = _builder.BuildGetter<T, TValue>(member!);
-            _getterCache.TryAdd(key, getter);
-            return getter;
-        }
+            => GetOrBuildAccessor(name, static (builder, member) => builder.BuildGetter<T, TValue>(member));
 
-        /// <summary>T 가 참조 타입일 때만. 값 타입이면 RefSetter 를 쓴다.</summary>
+        /// <summary>
+        /// 멤버 1개를 박싱 없이 쓰는 델리게이트. T 가 값 타입이면 인스턴스 멤버에 쓸 수 없다 (NotSupportedException, RefSetter 를 쓴다).
+        /// 없는 이름은 MemberNotFoundException, 쓸 수 없으면 MemberNotWritableException, 변환할 수 없는 값 타입이면 InvalidCastException.
+        /// </summary>
         public Setter<T, TValue> Setter<TValue>(string name)
-        {
-            var key = (name, typeof(TValue));
-            if (_setterCache.TryGetValue(key, out object? cached))
-                return (Setter<T, TValue>)cached;
-            if (!Members.TryGet(name, out ProbeMember? member))
-                throw new MemberNotFoundException(typeof(T), name);
-            Setter<T, TValue> setter = _builder.BuildSetter<T, TValue>(member!);
-            _setterCache.TryAdd(key, setter);
-            return setter;
-        }
+            => GetOrBuildAccessor(name, static (builder, member) => builder.BuildSetter<T, TValue>(member));
 
-        /// <summary>값 타입 대상의 원본을 바꿀 수 있다. 참조 타입에도 쓸 수 있다.</summary>
+        /// <summary>값 타입 대상의 원본을 바꿀 수 있다. 참조 타입에도 쓸 수 있다. 값 타입 제한을 빼면 예외는 Setter 와 같다.</summary>
         public RefSetter<T, TValue> RefSetter<TValue>(string name)
-        {
-            var key = (name, typeof(TValue));
-            if (_refSetterCache.TryGetValue(key, out object? cached))
-                return (RefSetter<T, TValue>)cached;
-            if (!Members.TryGet(name, out ProbeMember? member))
-                throw new MemberNotFoundException(typeof(T), name);
-            RefSetter<T, TValue> refSetter = _builder.BuildRefSetter<T, TValue>(member!);
-            _refSetterCache.TryAdd(key, refSetter);
-            return refSetter;
-        }
+            => GetOrBuildAccessor(name, static (builder, member) => builder.BuildRefSetter<T, TValue>(member));
 
         /// <summary>매개변수 없는 생성자로 T 를 만든다. 값 타입도 박싱하지 않는다. 만들 수 없으면 MemberNotFoundException.</summary>
         public new T CreateInstance()
@@ -70,6 +49,17 @@ namespace ReflectProbe
         private protected override bool HasDefaultFactory => _defaultFactory.Value != null;
 
         private protected override object CreateInstanceAsObject() => CreateInstance()!;
+
+        private TDelegate GetOrBuildAccessor<TDelegate>(string name, Func<ProbeBuilder, ProbeMember, TDelegate> build)
+            where TDelegate : Delegate
+        {
+            var key = (name, typeof(TDelegate));
+            if (_accessorCache.TryGetValue(key, out Delegate? cached))
+                return (TDelegate)cached;
+
+            // 동시에 2번 만들어져도 게시된 1개를 돌려준다 (TryAdd 후 지역 변수를 반환하면 진 스레드가 다른 인스턴스를 받는다 — 13주 수정).
+            return (TDelegate)_accessorCache.GetOrAdd(key, build(_builder, Members[name]));
+        }
 
         private Func<T>? BuildDefaultFactory()
         {

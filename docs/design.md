@@ -35,6 +35,22 @@
 | 26 | 생성 시점 · 캐시 | 메서드 목록 · 기본 팩토리는 처음 쓸 때 `Lazy` 로 1회. 팩토리 · Invoker 는 `ConstructorInfo` · `MethodInfo` 키 캐시, `Invoke(name)` 은 이름 키 캐시 (12주) | 필드만 쓰는 타입은 메서드 수집 비용 0. 같은 메서드를 다른 경로로 찾아도 델리게이트 1개 |
 | 27 | 강타입 Factory · Invoker | `GetFactory<TDelegate>()` · `GetInvoker<TDelegate>(name)` — 델리게이트 타입이 시그니처를 정한다. 매개변수 · 반환 타입 정확 일치 (오버로드는 매개변수로 결정), 인스턴스 메서드는 첫 매개변수가 대상 : class 는 선언 · 파생 타입 또는 부모 · object (castclass), struct 는 `ref T`(원본) 또는 `T`(사본). static 과 인스턴스가 모두 맞으면 `AmbiguousMemberException` (12주) | object[] 기반 `ProbeFactory` · `ProbeInvoker` 는 인자 배열 · 박싱 · 반환 박싱이 남는다 (메서드 80 B = MethodInfo.Invoke). 11주 Getter&lt;TValue&gt; 와 같은 이유로 강타입 경로를 둔다. 아리티별 오버로드(`GetInvoker<T1, TResult>` …)는 void · 인자 수마다 메서드가 늘어나 택하지 않음 |
 
+| 28 | 폴백 감지 | `RuntimeFeature.IsDynamicCodeSupported` 가 false 면 폴백, true 여도 작은 DynamicMethod 를 1회 생성 · 호출해 보고 **어떤 예외든** 나면 폴백. 두 TFM 같은 코드 (13주) | netstandard2.1 표면에도 이 API 가 있다 (`NETStandard.Library.Ref 2.1.0` 확인). 다만 Unity IL2CPP 등이 값을 정확히 돌려주는지 확실하지 않아 시험 생성을 겹친다. 예외가 새면 정적 초기화 실패로 라이브러리 전체가 막히므로 예외 타입을 좁히지 않는다 |
+| 29 | 폴백 테스트 방식 | 테스트 프로젝트 2개 : `ReflectProbe.Tests.Reflection` 이 같은 .cs 를 링크하고 모듈 초기화에서 internal `ProbeBuilder.ForceCurrent(new ReflectionProbeBuilder())`. 공개 스위치 없음 (13주) | 캐시(`Of`) 경로까지 그대로 폴백으로 검증. 테스트 어셈블리마다 프로세스가 달라 Emit 테스트와 섞이지 않는다. 4장 초안(테스트마다 빌더 직접 주입)은 테스트 152개 수정 + 캐시 경로 미검증이라 택하지 않음 |
+| 30 | 폴백 동작 동등성 | Reflection 빌더가 IL 의 castclass / unbox.any / ldelem 과 같은 예외를 낸다 (null 대상 · 값 타입에 null → `NullReferenceException`, 타입 불일치 → `InvalidCastException`, 인자 부족 → `IndexOutOfRangeException`). 호출 예외는 `TargetInvocationException` 을 벗겨 원래 예외로 (13주) | Reflection API 그대로면 `TargetException` · `ArgumentException` 을 내거나 null 을 default 로 바꿔 결정 17 과 달라진다. 같은 테스트 세트가 두 모드에서 통과하는 것이 기준 |
+| 31 | 폴백 강타입 Factory · Invoker | 식 트리를 `Compile(preferInterpretation: true)` 로 만든다 : 인자 → object[] → object 기반 팩토리 · Invoker → 반환 변환. ref 매개변수 델리게이트는 만들지 않는다 (결정 34) (13주) | 델리게이트 타입이 사용자 지정이라 C# 람다로 만들 수 없다. 인터프리터는 IL 을 생성하지 않는다. Getter / Setter / RefSetter 는 델리게이트 타입이 고정이라 C# 람다 |
+| 32 | 강타입 델리게이트 캐시 게시 | Getter / Setter / RefSetter 도 `GetOrAdd` 반환값을 돌려준다 (13주 버그 수정) | 11주 구현은 `TryAdd` 후 지역 변수를 반환해, 동시 최초 호출 32개 중 최대 31개가 서로 다른 인스턴스를 받았다 (`ConcurrencyTests` 로 3/3 재현). 생성자 · Invoker 캐시(결정 26)와 같은 규칙 : 2번 만들어질 수는 있어도 게시는 1개 |
+| 33 | netstandard2.1 결과물 검증 | 테스트 프로젝트가 `-p:ProbeLibraryTfm=netstandard2.1` 이면 `SetTargetFramework` 로 그 결과물을 참조. `tests/run-matrix.ps1` 이 net8.0 · netstandard2.1 × Emit · Reflection 4회 실행 (13주) | .NET 10 런타임 위에서 netstandard2.1 DLL 을 그대로 검증. 어느 DLL 을 썼는지는 `TargetFrameworkAttribute` 테스트로 확인 |
+
+| 34 | 폴백의 ref 매개변수 델리게이트 | Reflection 모드에서 `GetFactory<TDelegate>` · `GetInvoker<TDelegate>` 의 델리게이트에 ref 매개변수가 있으면 런타임과 관계없이 `NotSupportedException` (대안 : 대상을 T 로 받는 사본 호출, 또는 박스 원본을 수정하는 object 기반 `GetInvoker(name, types)`) (13주) | Unity IL2CPP(WebGL) 실측 : 식 트리 인터프리터가 `NotImplementedException: byref delegate`. CoreCLR 인터프리터는 되므로 그대로 두면 런타임마다 동작이 갈린다. 제네릭 어댑터로 지원하는 안은 인자 개수 × void/반환 조합마다 클래스가 늘어 택하지 않음 |
+| 35 | 강타입 Getter / Setter / RefSetter 의 TValue | 멤버 타입과 정확히 일치하거나 참조 변환 · 박싱/언박싱(object · 부모 타입 · 인터페이스)만 허용. 서로 다른 값 타입(int ↔ float, enum ↔ int, `int?` ↔ int 포함)은 델리게이트를 만들 때 `InvalidCastException`. 값 타입을 박싱해도 들어갈 수 없는 참조 타입(int → string 등)도 같다. struct 인스턴스 멤버의 `Setter` 는 `NotSupportedException` (static 멤버는 허용). 두 모드 공용 검사 (14주 버그 수정) | 수정 전 Emit 은 변환 IL 없이 비트를 재해석해 예외 없이 틀린 값을 냈다 (int -7 → `Getter<float>` = NaN, `Setter<float>` 5f → 1084227584). struct `Setter` 는 Emit 에서 NullReferenceException, 폴백에서는 조용히 무시. 폴백의 호출 시 `InvalidCastException` 과도 달랐다 (결정 30). 처음 수정은 값 타입 ↔ 값 타입만 막아 `Getter<string>(int 멤버)` 가 int 상자를 string 으로 돌려주는 타입 혼동이 남아 있었고, 14주 점검에서 함께 막았다. 만들 때 막으므로 호출 비용은 0 |
+| 36 | 함수 포인터 멤버 | 포인터와 같이 수집하지 않는다 (멤버 · 메서드 시그니처 · 대상 타입). ref · 포인터는 `IsByRef` · `IsPointer`, 함수 포인터는 `BaseType` 이 없고 object · 인터페이스가 아닌 타입으로 판단 (14주 점검) | 박싱할 수 없는 타입. 수정 전 Emit 은 함수 포인터 값을 object 참조로 돌려줘 사용하는 순간 프로세스가 종료됐다. `Type.IsFunctionPointer` 는 .NET 8 부터라 netstandard2.1 과 같은 코드를 쓴다. 처음 수정은 ref · 포인터도 `BaseType == null` 하나로 판단했는데 Unity IL2CPP 에서는 ref 타입의 `BaseType` 이 `ValueType` 이라 결정 34 의 검사가 통과됐다 (14주 WebGL 실측, `NotImplementedException: byref delegate`) |
+| 37 | Nullable 멤버 쓰기 | 정확히 같은 V 의 상자 또는 null 만. `DayOfWeek?` 에 int 상자는 두 모드 모두 `InvalidCastException` (14주 점검, 결정 30 보완) | Emit 의 `unbox.any Nullable<V>` 규칙. 수정 전 폴백은 열거형 ↔ 정수를 허용해 두 모드가 달랐다. 예외 : Unity Mono(6000.0 · 2022.3 에디터)의 Emit 은 `int?` 멤버에 열거형 상자를 받아들인다 (`unbox.any` 구현 차이, 값은 int 로 저장). 나머지 조합(long · uint · float · byte · 다른 열거형)은 `InvalidCastException` |
+| 38 | 인터페이스 대상의 상속 멤버 | 상속한 인터페이스의 프로퍼티 · 메서드를 모두 수집. 깊이(`DepthOffset`)는 가장 긴 상속 경로. 더 파생된 인터페이스의 같은 이름(메서드는 같은 시그니처)이 부모를 가리고, 상속 관계가 없는 부모끼리 겹치면 이름 접근은 `AmbiguousMemberException` (`Try*` 는 false), 인덱스 접근은 가능 (14주, 사용자 확인) | `Type.GetProperties` 는 인터페이스의 부모 멤버를 돌려주지 않아 `TypeProbe.Of<IList<int>>()` 에서 `Count` 를 찾지 못했다. FastMember 는 지원하지만 먼저 나온 쪽을 고르고 `GetInterfaces()` 의 순서는 보장되지 않는다. C# 도 모호성 오류다. 상속 판단은 제네릭 변성 때문에 `IsAssignableFrom` 을 쓰지 않는다 |
+| 39 | 박싱할 수 없는 매개변수의 생성자 | object 기반 `GetFactory(types)` 는 찾을 때 `MemberNotFoundException` (메서드 규칙과 같음). 강타입 `GetFactory<TDelegate>` 는 Emit 에서 지원, 폴백에서 `NotSupportedException` (14주, 사용자 확인) | 수정 전 Emit 은 만들어진 뒤 호출할 때, 폴백의 강타입은 만들 때 `InvalidProgramException` |
+| 40 | `Nullable<V>` 대상 | `ArgumentException` (14주, 사용자 확인) | `int?` 를 박싱하면 int 상자라 대상 객체로 존재하지 않는다. 수정 전 Emit 은 쓰기가 조용히 사라지고 폴백은 `FieldAccessException` |
+| 41 | 인터페이스의 static abstract · static virtual | 수집하지 않는다 (14주 점검) | constrained 호출이 아니면 부를 수 없다. 수정 전 Emit 은 이 멤버 하나 때문에 타입 전체 접근이 `BadImageFormatException` (IL switch 가 메서드 1개) |
+
 ### 계획서 초안에서 바뀐 점
 
 - 초안의 `EmitTypeProbe` / `ReflectionTypeProbe` (TypeProbe 파생 클래스) → **`ProbeBuilder` 전략 2개** (`EmitProbeBuilder`, `ReflectionProbeBuilder`).
@@ -130,10 +146,18 @@ probe.Getter<int>("hp")(p)      ← 멤버 전용 DynamicMethod, 박싱 없음
 
 ## 4. AOT 폴백
 
-- 감지 : 프로세스당 1회. net8.0 은 `RuntimeFeature.IsDynamicCodeSupported`, netstandard2.1 은 작은 DynamicMethod 생성·호출 시도 후 `PlatformNotSupportedException` / `NotSupportedException` 이면 폴백.
-- 동작 : 공개 API 동일. 내부는 캐싱한 MemberInfo 로 GetValue / SetValue / Invoke. 강타입 API 도 박싱이 남는다.
-- 확인 : `TypeProbe.Mode`. 테스트는 internal 생성 경로로 `ReflectionProbeBuilder` 를 직접 넣어 같은 테스트를 두 모드로 실행 (전역 스위치를 바꾸지 않아 병렬 테스트에 안전).
-- Unity IL2CPP : 코드 스트리핑으로 메타데이터가 빠질 수 있어 `link.xml` 또는 `[Preserve]` 필요.
+- 감지 : 프로세스당 1회 (결정 28). `RuntimeFeature.IsDynamicCodeSupported` + DynamicMethod 시험 생성 · 호출, 두 TFM 같은 코드.
+- 동작 : 공개 API 동일 (결정 30, 예외 : ref · 포인터 · ref struct 매개변수 델리게이트는 결정 34 · 39). 내부는 멤버마다 MemberInfo 를 붙잡은 델리게이트 배열로 GetValue / SetValue / Invoke. 강타입 API 도 박싱이 남고, 강타입 Factory · Invoker 는 식 트리 인터프리터를 거친다 (결정 31).
+- 확인 : `TypeProbe.Mode`. 테스트는 두 번째 테스트 프로젝트가 모듈 초기화에서 internal `ProbeBuilder.ForceCurrent` 로 폴백을 고정해 같은 테스트를 실행 (결정 29). 할당 0 B 테스트 3개는 `[EmitOnlyFact]` 로 폴백에서 건너뛴다.
+- Unity 실측 (13주, `05_코드/ReflectProbeUnityCheck/Results/README.md`)
+  - Mono 에디터 (6000.0.61f1 · 2022.3.20f1) : 감지 Emit, 16/16. 폴백 강제도 16/16.
+  - IL2CPP (WebGL, 6000.0.61f1) : `RuntimeFeature.IsDynamicCodeSupported = False` → Reflection 으로 자동 전환. `Of(Type)` 으로 제네릭에 안 쓴 struct 도 동작 (MakeGenericType).
+  - Managed Stripping High 에서는 이름으로만 쓰는 사용자 멤버(private setter · private 메서드)가 제거된다 → **`link.xml` 또는 `[Preserve]` 필요** (실측 재현 · 해결 확인). 기본값(Minimal)에서는 제거되지 않았다.
+  - ref 매개변수 델리게이트는 결정 34.
+- Unity 재확인 (14주, 리팩토링 · 결정 35~41 반영 DLL, 확인 항목 추가)
+  - Mono 에디터 (6000.0.61f1 · 2022.3.20f1) : Emit 24/24, 폴백 강제 25/25.
+  - IL2CPP (WebGL, 6000.0.61f1, Stripping High + `link.xml`) : 24/24. ref 타입의 `BaseType` 이 null 이 아닌 것을 여기서 찾았다 (결정 36).
+  - 함수 포인터 멤버는 Unity 에서 확인하지 않았다 (CoreCLR 만).
 
 ## 5. 범위 밖
 
@@ -143,8 +167,8 @@ ObjectReader(IDataReader), DLR `dynamic`, TypeBuilder 경로, ref/out 매개변�
 
 | 항목 | 현재 안 |
 |---|---|
-| `Getter<TValue>` 의 TValue 가 멤버 타입과 다를 때 | 정확히 일치할 때만 허용, 아니면 예외 |
-| struct 대상에 `Setter<TValue>` 호출 | `NotSupportedException` (RefSetter 안내) |
+| `Getter<TValue>` 의 TValue 가 멤버 타입과 다를 때 | 14주 확정 : 결정 35 |
+| struct 대상에 `Setter<TValue>` 호출 | 14주 구현 : `NotSupportedException` (결정 35, static 멤버 제외) |
 | static 멤버의 강타입 Getter | target 인자를 무시 |
 | 인스턴스 readonly 필드에 DynamicMethod `stfld` | 10주 확인 : 동작함 (`Indexer_InstanceReadonlyField_Writes`) |
 | 박싱된 struct 를 `unbox` 주소로 쓰기 | 10주 확인 : 박스 원본이 바뀜 (`BoxedStruct_*`) |

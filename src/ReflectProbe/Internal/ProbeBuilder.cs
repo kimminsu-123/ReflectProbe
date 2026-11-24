@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Threading;
 
 namespace ReflectProbe.Internal
 {
@@ -9,9 +10,24 @@ namespace ReflectProbe.Internal
     /// </summary>
     internal abstract class ProbeBuilder
     {
-        /// <summary>DynamicCodeSupport 판단 결과에 따른 프로세스 기본 빌더.</summary>
-        /// <remarks>Reflection 폴백 연동(13주) 전까지는 Emit 고정.</remarks>
-        public static ProbeBuilder Current { get; } = new EmitProbeBuilder();
+        private static ProbeBuilder? _current;
+
+        /// <summary>DynamicCodeSupport 판단 결과에 따른 프로세스 기본 빌더. 처음 읽을 때 1회 정해진다.</summary>
+        public static ProbeBuilder Current
+            => Volatile.Read(ref _current) ?? InitializeCurrent(DynamicCodeSupport.IsSupported ? new EmitProbeBuilder() : new ReflectionProbeBuilder());
+
+        /// <summary>
+        /// 테스트 전용 : 프로세스 기본 빌더를 고정한다. Current 가 한 번이라도 읽히기 전에 불러야 한다
+        /// (Reflection 모드 테스트 프로젝트의 모듈 초기화). 이미 다른 빌더로 정해졌으면 InvalidOperationException.
+        /// </summary>
+        internal static void ForceCurrent(ProbeBuilder builder)
+        {
+            if (InitializeCurrent(builder) != builder)
+                throw new InvalidOperationException($"ProbeBuilder.Current 가 이미 {_current!.Mode} 로 정해졌습니다.");
+        }
+
+        private static ProbeBuilder InitializeCurrent(ProbeBuilder builder)
+            => Interlocked.CompareExchange(ref _current, builder, null) ?? builder;
 
         public abstract ProbeMode Mode { get; }
 
@@ -41,7 +57,7 @@ namespace ReflectProbe.Internal
 
         /// <summary>
         /// delegateType 시그니처 그대로 생성자를 호출하는 델리게이트. 인자 배열 · 박싱이 없다.
-        /// 시그니처 일치 여부는 호출 측(MethodCollector.MatchesFactory)이 확인한다.
+        /// 시그니처 일치 여부는 호출 측(MethodCollector.FindConstructor)이 확인한다.
         /// </summary>
         public abstract Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType);
 
@@ -50,5 +66,51 @@ namespace ReflectProbe.Internal
         /// 시그니처 일치 여부는 호출 측(MethodCollector.MatchesInvoker)이 확인한다.
         /// </summary>
         public abstract Delegate BuildTypedInvoker(MethodInfo method, Type delegateType);
+
+        // ---------- 강타입 접근 검사 (두 구현 공용, 델리게이트를 만들 때 1회) ----------
+
+        /// <summary>읽을 수 있고 멤버 타입 → TValue 변환이 가능해야 한다.</summary>
+        private protected static void EnsureGettable<TValue>(ProbeMember member)
+        {
+            if (!member.CanRead)
+                throw new MemberNotReadableException(member.DeclaringType, member.Name);
+            EnsureConvertible(member, member.Type, typeof(TValue));
+        }
+
+        /// <summary>쓸 수 있고 TValue → 멤버 타입 변환이 가능해야 한다.</summary>
+        private protected static void EnsureSettable<TValue>(ProbeMember member)
+        {
+            if (!member.CanWrite)
+                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureConvertible(member, typeof(TValue), member.Type);
+        }
+
+        /// <summary>
+        /// Setter 는 대상을 값으로 받으므로 struct 인스턴스 멤버는 사본에만 써진다 (결정 4). static 멤버는 대상을 쓰지 않아 허용한다.
+        /// </summary>
+        private protected static void EnsureSettableByValue<T, TValue>(ProbeMember member)
+        {
+            EnsureSettable<TValue>(member);
+            if (typeof(T).IsValueType && !member.IsStatic)
+                throw new NotSupportedException(
+                    $"값 타입 '{typeof(T)}' 의 '{member.Name}' 에는 Setter 를 쓸 수 없습니다 (사본에만 써집니다). RefSetter 를 쓰세요.");
+        }
+
+        /// <summary>
+        /// 결정 35 : 정확 일치 · 참조 변환 · 박싱/언박싱만 허용한다. 값 타입에서 나가는 변환은 호출할 때 타입을 검사하는 IL 이 없어
+        /// 서로 다른 값 타입이면 비트를 재해석하고, 상자가 들어갈 수 없는 참조 타입이면 다른 타입의 상자가 그대로 들어가므로 여기서 막는다.
+        /// 참조 타입에서 나가는 변환(참조 변환 · 언박싱)의 타입 검사는 호출할 때 castclass / unbox.any 가 한다.
+        /// </summary>
+        private static void EnsureConvertible(ProbeMember member, Type from, Type to)
+        {
+            if (from == to || !from.IsValueType)
+                return;
+
+            // Nullable<V> 의 상자는 V 의 상자(또는 null)다.
+            Type boxed = Nullable.GetUnderlyingType(from) ?? from;
+            if (to.IsValueType || !to.IsAssignableFrom(boxed))
+                throw new InvalidCastException(
+                    $"'{member.DeclaringType}.{member.Name}' : '{from}' 을(를) '{to}' 로 변환할 수 없습니다.");
+        }
     }
 }
