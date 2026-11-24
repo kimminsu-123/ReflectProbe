@@ -97,8 +97,7 @@ namespace ReflectProbe.Internal
 
         public override Getter<T, TValue> BuildGetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanRead)
-                throw new MemberNotReadableException(member.DeclaringType, member.Name);
+            EnsureGettable<TValue>(member);
 
             Type tType = typeof(T);
             Type tvType = typeof(TValue);
@@ -142,8 +141,7 @@ namespace ReflectProbe.Internal
 
         public override Setter<T, TValue> BuildSetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanWrite)
-                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureSettableByValue<T, TValue>(member);
 
             Type tType = typeof(T);
             Type tvType = typeof(TValue);
@@ -183,8 +181,7 @@ namespace ReflectProbe.Internal
 
         public override RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanWrite)
-                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureSettable<TValue>(member);
 
             Type tType = typeof(T);
             Type tvType = typeof(TValue);

@@ -55,8 +55,7 @@ namespace ReflectProbe.Internal
 
         public override Getter<T, TValue> BuildGetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanRead)
-                throw new MemberNotReadableException(member.DeclaringType, member.Name);
+            EnsureGettable<TValue>(member);
 
             Func<object?, object?> get = CreateGetter(member.DeclaringType, member);
             return target => (TValue)get(target)!;     // unbox.any / castclass 와 같은 변환
@@ -64,8 +63,7 @@ namespace ReflectProbe.Internal
 
         public override Setter<T, TValue> BuildSetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanWrite)
-                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureSettableByValue<T, TValue>(member);
 
             Action<object?, object?> set = CreateSetter(member.DeclaringType, member);
             return (target, value) => set(target, value);
@@ -73,8 +71,7 @@ namespace ReflectProbe.Internal
 
         public override RefSetter<T, TValue> BuildRefSetter<T, TValue>(ProbeMember member)
         {
-            if (!member.CanWrite)
-                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureSettable<TValue>(member);
 
             Action<object?, object?> set = CreateSetter(member.DeclaringType, member);
             if (!typeof(T).IsValueType || member.IsStatic)

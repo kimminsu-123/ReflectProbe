@@ -66,5 +66,45 @@ namespace ReflectProbe.Internal
         /// 시그니처 일치 여부는 호출 측(MethodCollector.MatchesInvoker)이 확인한다.
         /// </summary>
         public abstract Delegate BuildTypedInvoker(MethodInfo method, Type delegateType);
+
+        // ---------- 강타입 접근 검사 (두 구현 공용, 델리게이트를 만들 때 1회) ----------
+
+        /// <summary>읽을 수 있고 멤버 타입 → TValue 변환이 가능해야 한다.</summary>
+        private protected static void EnsureGettable<TValue>(ProbeMember member)
+        {
+            if (!member.CanRead)
+                throw new MemberNotReadableException(member.DeclaringType, member.Name);
+            EnsureConvertible(member, typeof(TValue));
+        }
+
+        /// <summary>쓸 수 있고 TValue → 멤버 타입 변환이 가능해야 한다.</summary>
+        private protected static void EnsureSettable<TValue>(ProbeMember member)
+        {
+            if (!member.CanWrite)
+                throw new MemberNotWritableException(member.DeclaringType, member.Name);
+            EnsureConvertible(member, typeof(TValue));
+        }
+
+        /// <summary>
+        /// Setter 는 대상을 값으로 받으므로 struct 인스턴스 멤버는 사본에만 써진다 (결정 4). static 멤버는 대상을 쓰지 않아 허용한다.
+        /// </summary>
+        private protected static void EnsureSettableByValue<T, TValue>(ProbeMember member)
+        {
+            EnsureSettable<TValue>(member);
+            if (typeof(T).IsValueType && !member.IsStatic)
+                throw new NotSupportedException(
+                    $"값 타입 '{typeof(T)}' 의 '{member.Name}' 에는 Setter 를 쓸 수 없습니다 (사본에만 써집니다). RefSetter 를 쓰세요.");
+        }
+
+        /// <summary>
+        /// 결정 35 : 정확 일치 · 참조 변환 · 박싱/언박싱만 허용한다. 서로 다른 값 타입은 변환 IL 이 없어 비트를 그대로 재해석하게 되므로 막는다.
+        /// 참조 변환 · 언박싱의 실제 타입 검사는 호출할 때 castclass / unbox.any 가 한다.
+        /// </summary>
+        private static void EnsureConvertible(ProbeMember member, Type valueType)
+        {
+            if (member.Type != valueType && member.Type.IsValueType && valueType.IsValueType)
+                throw new InvalidCastException(
+                    $"'{member.DeclaringType}.{member.Name}' 의 타입은 '{member.Type}' 이라 '{valueType}' 로 읽거나 쓸 수 없습니다.");
+        }
     }
 }
