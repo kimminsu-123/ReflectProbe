@@ -47,17 +47,22 @@ namespace ReflectProbe
 
         // ---------- 생성 / 캐시 ----------
 
+        /// <summary>(type, scope) 의 TypeProbe. 처음 한 번만 만들고 이후 같은 인스턴스를 돌려준다. 열린 제네릭 · ref · 포인터 · ref struct · void 는 ArgumentException.</summary>
         public static TypeProbe Of(Type type, ProbeScope scope = ProbeScope.All) => ProbeCache.GetOrCreate(type, scope);
 
+        /// <summary>(typeof(T), scope) 의 TypeProbe. Of(typeof(T), scope) 와 같은 인스턴스다.</summary>
         public static TypeProbe<T> Of<T>(ProbeScope scope = ProbeScope.All) => (TypeProbe<T>)ProbeCache.GetOrCreate(typeof(T), scope);
 
         /// <summary>이 프로세스에서 쓰는 접근 코드 생성 방식. 최초 1회 판단 후 고정.</summary>
         public static ProbeMode Mode => ProbeBuilder.Current.Mode;
 
+        /// <summary>접근 대상 타입.</summary>
         public Type Type { get; }
 
+        /// <summary>수집한 멤버 범위.</summary>
         public ProbeScope Scope { get; }
 
+        /// <summary>수집한 필드 · 프로퍼티의 메타데이터.</summary>
         public ProbeMemberSet Members { get; }
 
         // ---------- 필드 / 프로퍼티 : 이름 기반 ----------
@@ -112,12 +117,14 @@ namespace ReflectProbe
 
         // ---------- 필드 / 프로퍼티 : 인덱스 기반 (이름 해시 생략) ----------
 
+        /// <summary>이름의 인덱스. 반복 호출할 때는 받아 두고 GetValue / SetValue 로 쓴다. 없으면 MemberNotFoundException.</summary>
         public int GetIndex(string name) => Members.TryGetIndex(name, out int index) ? index : throw new MemberNotFoundException(Type, name);
 
         /// <summary>이름 + 선언 깊이의 인덱스. 반복 호출할 때는 받아 두고 GetValue / SetValue 로 쓴다.</summary>
         public int GetIndex(string name, int depthOffset)
             => Members.TryGet(name, depthOffset, out ProbeMember? member) ? member.Index : throw new MemberNotFoundException(Type, name);
 
+        /// <summary>이름의 인덱스를 찾는다. 없으면 false.</summary>
         public bool TryGetIndex(string name, out int index) => Members.TryGetIndex(name, out index);
 
         /// <summary>범위 밖 index 는 ArgumentOutOfRangeException. IsHidden 멤버도 접근할 수 있다.</summary>

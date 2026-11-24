@@ -3,9 +3,13 @@ using System.Reflection;
 
 namespace ReflectProbe
 {
+    /// <summary>멤버 종류.</summary>
     public enum ProbeMemberKind
     {
+        /// <summary>필드.</summary>
         Field,
+
+        /// <summary>프로퍼티. 인덱서는 수집하지 않는다.</summary>
         Property
     }
 
@@ -52,17 +56,22 @@ namespace ReflectProbe
             }
         }
 
+        /// <summary>멤버 이름. 같은 이름이 부모 · 자식에 모두 있을 수 있다 (IsHidden, DepthOffset 참고).</summary>
         public string Name { get; }
 
         /// <summary>필드 타입 또는 프로퍼티 타입.</summary>
         public Type Type { get; }
 
+        /// <summary>필드인지 프로퍼티인지.</summary>
         public ProbeMemberKind Kind { get; }
 
+        /// <summary>멤버를 선언한 타입. 상속받은 멤버는 부모 타입이다.</summary>
         public Type DeclaringType { get; }
 
+        /// <summary>static 멤버인지. static 멤버는 접근할 때 target 을 무시한다.</summary>
         public bool IsStatic { get; }
 
+        /// <summary>필드가 public 이거나, 프로퍼티 접근자 중 하나라도 public 이면 true.</summary>
         public bool IsPublic { get; }
 
         /// <summary>FastMember 와 달리 필드에서도 예외 없이 동작한다.</summary>
@@ -92,6 +101,7 @@ namespace ReflectProbe
         /// <summary>프로퍼티 setter. 상속받은 접근자 포함. 필드는 null.</summary>
         internal MethodInfo? SetMethod { get; }
 
+        /// <summary>"Field Int32 _hp" 형식.</summary>
         public override string ToString() => $"{Kind} {Type.Name} {Name}";
 
         /// <summary>

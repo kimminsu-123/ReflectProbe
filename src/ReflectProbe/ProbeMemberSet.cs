@@ -29,14 +29,17 @@ namespace ReflectProbe
             }
         }
 
+        /// <summary>가려진(IsHidden) 멤버를 포함한 개수.</summary>
         public int Count => _members.Length;
 
+        /// <summary>Index 순서로 찾는다. 범위 밖이면 IndexOutOfRangeException.</summary>
         public ProbeMember this[int index] => _members[index];
 
         /// <summary>이름으로 찾는다. 없으면 MemberNotFoundException.</summary>
         public ProbeMember this[string name]
             => TryGet(name, out ProbeMember? member) ? member : throw new MemberNotFoundException(_type, name);
 
+        /// <summary>이름으로 찾는다. 같은 이름이 여러 개면 가장 파생된 멤버. 없으면 false.</summary>
         public bool TryGet(string name, [MaybeNullWhen(false)] out ProbeMember member)
         {
             if (_nameToIndex.TryGetValue(name, out int index))
@@ -76,6 +79,7 @@ namespace ReflectProbe
             return false;
         }
 
+        /// <summary>Index 순서로 열거한다.</summary>
         public IEnumerator<ProbeMember> GetEnumerator() => ((IEnumerable<ProbeMember>)_members).GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

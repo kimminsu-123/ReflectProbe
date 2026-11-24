@@ -9,9 +9,16 @@ namespace ReflectProbe
     [Flags]
     public enum ProbeScope
     {
+        /// <summary>public 멤버.</summary>
         Public = 1,
+
+        /// <summary>private · protected · internal 멤버. 부모의 private 멤버도 포함한다.</summary>
         NonPublic = 2,
+
+        /// <summary>인스턴스 멤버.</summary>
         Instance = 4,
+
+        /// <summary>static 멤버.</summary>
         Static = 8,
 
         /// <summary>TypeProbe.Of 의 기본값.</summary>
