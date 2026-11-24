@@ -213,7 +213,10 @@ namespace ReflectProbe.Internal
             return target;
         }
 
-        /// <summary>IL 의 unbox.any(값 타입) · castclass(참조 타입) 와 같은 규칙. 열거형 ↔ 기본 정수 타입은 unbox 처럼 허용한다.</summary>
+        /// <summary>
+        /// IL 의 unbox.any(값 타입) · castclass(참조 타입) 와 같은 규칙. 열거형 ↔ 기본 정수 타입은 unbox 처럼 허용한다.
+        /// Nullable 은 unbox.any 와 같이 정확히 같은 V 의 상자만 받는다 (IsInstanceOfType 이 판단).
+        /// </summary>
         private static object? ConvertValue(object? value, Type type)
         {
             if (value is null)
@@ -226,9 +229,8 @@ namespace ReflectProbe.Internal
             if (type.IsInstanceOfType(value))
                 return value;
 
-            Type target = Nullable.GetUnderlyingType(type) ?? type;
-            if (target.IsValueType && UnderlyingType(target) == UnderlyingType(value.GetType()))
-                return target.IsEnum ? Enum.ToObject(target, value) : Convert.ChangeType(value, target);
+            if (type.IsValueType && UnderlyingType(type) == UnderlyingType(value.GetType()))
+                return type.IsEnum ? Enum.ToObject(type, value) : Convert.ChangeType(value, type);
 
             throw new InvalidCastException($"'{value.GetType()}' 을(를) '{type}' 로 변환할 수 없습니다.");
         }

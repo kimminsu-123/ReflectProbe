@@ -259,4 +259,27 @@ public class TypeProbeNameIndexTests
         Assert.Throws<NullReferenceException>(() => _playerProbe[null, "_hp"]);
         Assert.Throws<NullReferenceException>(() => _playerProbe[new Player(), "_hp"] = null);
     }
+
+    // ---------- unbox.any 의 Nullable 규칙 (두 모드 동일, 결정 30) ----------
+
+    [Fact]
+    public void Indexer_NullableMember_RejectsEnumUnderlyingMix()
+    {
+        TypeProbe probe = TypeProbe.Of<NullableHolder>();
+        var target = new NullableHolder();
+
+        probe[target, "Day"] = DayOfWeek.Friday;
+        probe[target, "Number"] = 5;
+        Assert.Equal(DayOfWeek.Friday, target.Day);
+        Assert.Equal(5, target.Number);
+
+        Assert.Throws<InvalidCastException>(() => probe[target, "Day"] = 1);
+        Assert.Throws<InvalidCastException>(() => probe[target, "Number"] = DayOfWeek.Monday);
+    }
+
+    private class NullableHolder
+    {
+        public DayOfWeek? Day = null;
+        public int? Number = null;
+    }
 }

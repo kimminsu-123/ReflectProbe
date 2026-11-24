@@ -90,7 +90,7 @@ namespace ReflectProbe
             set => _setter(GetIndex(name, depthOffset), target, value);
         }
 
-        /// <summary>없거나 읽을 수 없으면 false. 예외를 던지지 않는다.</summary>
+        /// <summary>이름이 없거나 읽을 수 없는 멤버면 false. 맞지 않는 target 의 예외는 인덱서와 같이 전파된다.</summary>
         public bool TryGetValue(object? target, string name, out object? value)
         {
             if (Members.TryGet(name, out ProbeMember? member) && member.CanRead)
@@ -103,7 +103,7 @@ namespace ReflectProbe
             return false;
         }
 
-        /// <summary>없거나 쓸 수 없으면 false. 예외를 던지지 않는다.</summary>
+        /// <summary>이름이 없거나 쓸 수 없는 멤버면 false. 맞지 않는 target · value 의 예외는 인덱서와 같이 전파된다.</summary>
         public bool TrySetValue(object? target, string name, object? value)
         {
             if (Members.TryGet(name, out ProbeMember? member) && member.CanWrite)

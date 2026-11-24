@@ -26,14 +26,14 @@ namespace ReflectProbe
 
         /// <summary>
         /// 멤버 1개를 박싱 없이 읽는 델리게이트. TValue 는 멤버 타입과 같거나 참조 변환 · 박싱이 되는 타입이어야 한다.
-        /// 없는 이름은 MemberNotFoundException, 읽을 수 없으면 MemberNotReadableException, 서로 다른 값 타입이면 InvalidCastException.
+        /// 없는 이름은 MemberNotFoundException, 읽을 수 없으면 MemberNotReadableException, 변환할 수 없는 값 타입이면 InvalidCastException.
         /// </summary>
         public Getter<T, TValue> Getter<TValue>(string name)
             => GetOrBuildAccessor(name, static (builder, member) => builder.BuildGetter<T, TValue>(member));
 
         /// <summary>
         /// 멤버 1개를 박싱 없이 쓰는 델리게이트. T 가 값 타입이면 인스턴스 멤버에 쓸 수 없다 (NotSupportedException, RefSetter 를 쓴다).
-        /// 없는 이름은 MemberNotFoundException, 쓸 수 없으면 MemberNotWritableException, 서로 다른 값 타입이면 InvalidCastException.
+        /// 없는 이름은 MemberNotFoundException, 쓸 수 없으면 MemberNotWritableException, 변환할 수 없는 값 타입이면 InvalidCastException.
         /// </summary>
         public Setter<T, TValue> Setter<TValue>(string name)
             => GetOrBuildAccessor(name, static (builder, member) => builder.BuildSetter<T, TValue>(member));

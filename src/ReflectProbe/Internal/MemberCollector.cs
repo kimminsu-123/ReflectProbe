@@ -7,7 +7,7 @@ namespace ReflectProbe.Internal
 {
     /// <summary>
     /// 범위에 맞는 필드·프로퍼티를 수집해 Index 순서의 멤버 목록을 만든다. 이름 맵은 이 목록으로 ProbeMemberSet 이 만든다.
-    /// - 인덱서, [CompilerGenerated] 백킹 필드, const 필드, 박싱할 수 없는 타입(ref · 포인터 · ref struct) 제외
+    /// - 인덱서, [CompilerGenerated] 백킹 필드, const 필드, 박싱할 수 없는 타입(ref · 포인터 · 함수 포인터 · ref struct) 제외
     /// - BaseType 체인을 올라가며 타입마다 DeclaredOnly 로 수집 (GetFields(NonPublic) 는 부모 private 을 돌려주지 않음)
     /// - override 된 프로퍼티는 가장 파생된 것 1개만
     /// - 같은 이름은 가장 파생된 타입의 멤버만 이름으로 접근, 나머지는 IsHidden = true (이름 + DepthOffset 으로는 접근 가능)
@@ -91,6 +91,11 @@ namespace ReflectProbe.Internal
             return flags;
         }
 
-        internal static bool IsUnsupportedType(Type type) => type.IsByRef || type.IsPointer || type.IsByRefLike;
+        /// <summary>
+        /// 박싱할 수 없는 타입. Type.IsFunctionPointer 는 .NET 8 부터라 netstandard2.1 과 같은 코드를 쓰기 위해
+        /// "BaseType 이 없는데 object · 인터페이스가 아닌 타입"(ref · 포인터 · 함수 포인터)으로 판단한다.
+        /// </summary>
+        internal static bool IsUnsupportedType(Type type)
+            => type.IsByRefLike || (type.BaseType == null && !type.IsInterface && type != typeof(object));
     }
 }

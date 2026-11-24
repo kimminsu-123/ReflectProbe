@@ -51,6 +51,39 @@ public class TypedMismatchTests
         Assert.Contains("System.Single", e.Message);
     }
 
+    // ---------- 값 타입 → 박싱해도 들어갈 수 없는 참조 타입 : 만들 때 InvalidCastException ----------
+    // 수정 전 Emit 은 box 만 하고 castclass 가 없어 int 상자가 string 변수에 그대로 들어갔다 (타입 혼동).
+
+    [Fact]
+    public void Getter_ValueTypeToUnrelatedReference_ThrowsWhenBuilt()
+    {
+        Assert.Throws<InvalidCastException>(() => _probe.Getter<string>("_hp"));
+        Assert.Throws<InvalidCastException>(() => _probe.Getter<IDisposable>("_hp"));
+        Assert.Throws<InvalidCastException>(() => _probe.Getter<Enum>("_hp"));
+    }
+
+    [Fact]
+    public void Setter_ValueTypeToUnrelatedReference_ThrowsWhenBuilt()
+    {
+        Assert.Throws<InvalidCastException>(() => _target.Setter<int>("Text"));
+        Assert.Throws<InvalidCastException>(() => _target.RefSetter<int>("Text"));
+    }
+
+    [Fact]
+    public void ValueTypeToBoxableReference_Works()
+    {
+        var target = new MismatchTarget { Maybe = 3, Day = DayOfWeek.Friday };
+
+        Assert.Equal(DayOfWeek.Friday, _target.Getter<Enum>("Day")(target));
+        Assert.Equal(DayOfWeek.Friday, _target.Getter<ValueType>("Day")(target));
+        Assert.Equal(3, _target.Getter<IComparable>("Maybe")(target));     // int? 의 상자는 int
+        _target.Setter<int>("Anything")(target, 9);
+        Assert.Equal(9, target.Anything);
+
+        target.Maybe = null;
+        Assert.Null(_target.Getter<IComparable>("Maybe")(target));
+    }
+
     // ---------- 정확 일치 · 참조 변환 · 박싱은 그대로 ----------
 
     [Fact]

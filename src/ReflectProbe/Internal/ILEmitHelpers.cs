@@ -26,7 +26,7 @@ namespace ReflectProbe.Internal
 
         /// <summary>
         /// 강타입 API 의 값 변환 : 정확 일치면 아무것도 하지 않고, 값 → 참조는 box, 참조 → 값은 unbox.any, 참조 → 참조는 castclass.
-        /// 서로 다른 값 타입은 ProbeBuilder 가 미리 막는다 (결정 35).
+        /// 값 타입에서 들어갈 수 없는 타입으로 가는 변환은 ProbeBuilder 가 미리 막는다 (결정 35).
         /// </summary>
         public static void EmitConvert(ILGenerator il, Type from, Type to)
         {

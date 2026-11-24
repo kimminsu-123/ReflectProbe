@@ -74,7 +74,7 @@ namespace ReflectProbe.Internal
         {
             if (!member.CanRead)
                 throw new MemberNotReadableException(member.DeclaringType, member.Name);
-            EnsureConvertible(member, typeof(TValue));
+            EnsureConvertible(member, member.Type, typeof(TValue));
         }
 
         /// <summary>쓸 수 있고 TValue → 멤버 타입 변환이 가능해야 한다.</summary>
@@ -82,7 +82,7 @@ namespace ReflectProbe.Internal
         {
             if (!member.CanWrite)
                 throw new MemberNotWritableException(member.DeclaringType, member.Name);
-            EnsureConvertible(member, typeof(TValue));
+            EnsureConvertible(member, typeof(TValue), member.Type);
         }
 
         /// <summary>
@@ -97,14 +97,20 @@ namespace ReflectProbe.Internal
         }
 
         /// <summary>
-        /// 결정 35 : 정확 일치 · 참조 변환 · 박싱/언박싱만 허용한다. 서로 다른 값 타입은 변환 IL 이 없어 비트를 그대로 재해석하게 되므로 막는다.
-        /// 참조 변환 · 언박싱의 실제 타입 검사는 호출할 때 castclass / unbox.any 가 한다.
+        /// 결정 35 : 정확 일치 · 참조 변환 · 박싱/언박싱만 허용한다. 값 타입에서 나가는 변환은 호출할 때 타입을 검사하는 IL 이 없어
+        /// 서로 다른 값 타입이면 비트를 재해석하고, 상자가 들어갈 수 없는 참조 타입이면 다른 타입의 상자가 그대로 들어가므로 여기서 막는다.
+        /// 참조 타입에서 나가는 변환(참조 변환 · 언박싱)의 타입 검사는 호출할 때 castclass / unbox.any 가 한다.
         /// </summary>
-        private static void EnsureConvertible(ProbeMember member, Type valueType)
+        private static void EnsureConvertible(ProbeMember member, Type from, Type to)
         {
-            if (member.Type != valueType && member.Type.IsValueType && valueType.IsValueType)
+            if (from == to || !from.IsValueType)
+                return;
+
+            // Nullable<V> 의 상자는 V 의 상자(또는 null)다.
+            Type boxed = Nullable.GetUnderlyingType(from) ?? from;
+            if (to.IsValueType || !to.IsAssignableFrom(boxed))
                 throw new InvalidCastException(
-                    $"'{member.DeclaringType}.{member.Name}' 의 타입은 '{member.Type}' 이라 '{valueType}' 로 읽거나 쓸 수 없습니다.");
+                    $"'{member.DeclaringType}.{member.Name}' : '{from}' 을(를) '{to}' 로 변환할 수 없습니다.");
         }
     }
 }

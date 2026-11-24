@@ -25,7 +25,7 @@ namespace ReflectProbe.Internal
                 return lazy.Value;
 
             // Lazy 는 팩토리 예외도 영구 캐싱하므로 TypeProbe<T> 로 만들 수 없는 타입은 캐시에 넣기 전에 막는다.
-            if (type.ContainsGenericParameters || type.IsByRef || type.IsPointer || type.IsByRefLike || type == typeof(void))
+            if (type.ContainsGenericParameters || MemberCollector.IsUnsupportedType(type) || type == typeof(void))
                 throw new ArgumentException($"'{type}' 은(는) TypeProbe 대상이 될 수 없습니다.", nameof(type));
 
             return _cache.GetOrAdd((type, scope), static key => new Lazy<TypeProbe>(
