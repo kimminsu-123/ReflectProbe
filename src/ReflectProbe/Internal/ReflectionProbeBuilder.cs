@@ -119,11 +119,11 @@ namespace ReflectProbe.Internal
         // ---------- 강타입 생성자 · 메서드 ----------
         // 델리게이트 타입이 사용자 지정이라 C# 람다로 만들 수 없다. 식 트리를 인터프리터 모드로 컴파일해
         // "인자 → object[] → object 기반 팩토리 · Invoker → 반환 변환" 을 감싼다. 인터프리터는 IL 을 생성하지 않는다.
-        // ref 매개변수가 있는 델리게이트는 만들지 않는다 (결정 34).
+        // ref · 포인터 · ref struct 매개변수가 있는 델리게이트는 만들지 않는다 (결정 34 · 39).
 
         public override Delegate BuildTypedFactory(ConstructorInfo constructor, Type delegateType)
         {
-            ThrowIfByRefDelegate(delegateType);
+            ThrowIfUnsupportedDelegate(delegateType);
             ProbeFactory factory = BuildFactory(constructor);
             ParameterExpression[] parameters = CreateParameters(delegateType);
 
@@ -135,7 +135,7 @@ namespace ReflectProbe.Internal
 
         public override Delegate BuildTypedInvoker(MethodInfo method, Type delegateType)
         {
-            ThrowIfByRefDelegate(delegateType);
+            ThrowIfUnsupportedDelegate(delegateType);
             ProbeInvoker invoker = BuildInvoker(method);
             ParameterExpression[] parameters = CreateParameters(delegateType);
 
@@ -148,14 +148,15 @@ namespace ReflectProbe.Internal
         /// <summary>
         /// 결정 34 : Unity IL2CPP 의 식 트리 인터프리터는 ref 매개변수 델리게이트를 만들지 못한다 (NotImplementedException "byref delegate",
         /// 13주 WebGL 실측). CoreCLR 인터프리터는 되지만 런타임마다 동작이 갈리지 않도록 폴백에서는 항상 막는다.
+        /// 포인터 · ref struct 매개변수는 object[] 로 넘길 수 없어 같이 막는다 (결정 39).
         /// </summary>
-        private static void ThrowIfByRefDelegate(Type delegateType)
+        private static void ThrowIfUnsupportedDelegate(Type delegateType)
         {
             foreach (Type parameterType in DelegateSignature.ParameterTypes(delegateType))
             {
-                if (parameterType.IsByRef)
+                if (MemberCollector.IsUnsupportedType(parameterType))
                     throw new NotSupportedException(
-                        $"Reflection 폴백 모드에서는 ref 매개변수가 있는 델리게이트 '{delegateType}' 를 만들 수 없습니다. " +
+                        $"Reflection 폴백 모드에서는 ref · 포인터 · ref struct 매개변수가 있는 델리게이트 '{delegateType}' 를 만들 수 없습니다. " +
                         "대상을 T(사본) 로 받는 델리게이트, 또는 박스 원본을 수정하는 object 기반 GetInvoker(name, types) 를 쓰세요.");
             }
         }
@@ -262,7 +263,7 @@ namespace ReflectProbe.Internal
             }
         }
 
-        /// <summary>델리게이트 매개변수. ref 매개변수는 ThrowIfByRefDelegate 가 미리 막는다.</summary>
+        /// <summary>델리게이트 매개변수. 박싱할 수 없는 매개변수는 ThrowIfUnsupportedDelegate 가 미리 막는다.</summary>
         private static ParameterExpression[] CreateParameters(Type delegateType)
         {
             Type[] types = DelegateSignature.ParameterTypes(delegateType);

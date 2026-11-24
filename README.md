@@ -43,7 +43,12 @@ view["_hp"] = 10;
 
 `TypeProbe.Of<T>(ProbeScope)` 로 정한다. 기본값은 public · non-public · instance · static 전부와 부모의 private 멤버까지다.
 인덱서, `const`, 컴파일러가 만든 백킹 필드, ref · 포인터 · 함수 포인터 · ref struct 타입 멤버는 제외한다.
-인터페이스를 대상으로 하면 그 인터페이스가 직접 선언한 멤버만 수집한다.
+인터페이스의 static abstract · static virtual 멤버도 제외한다 (타입 인수 없이는 호출할 수 없다).
+
+인터페이스를 대상으로 하면 상속한 인터페이스의 멤버까지 수집한다. 상속 관계가 없는 두 부모가 같은 이름의 멤버를 가지면
+이름으로는 `AmbiguousMemberException`, 인덱스로는 둘 다 접근할 수 있다.
+
+`Nullable<T>` 자체(`TypeProbe.Of<int?>()`)는 대상이 될 수 없다. `int?` 타입의 멤버는 지원한다.
 
 ## AOT 환경
 
@@ -54,8 +59,8 @@ view["_hp"] = 10;
 | 이름 · 인덱스 기반 | IL switch | `FieldInfo` · `MethodInfo` 호출 |
 | 강타입 Getter / Setter | 박싱 없음 | 내부에서 박싱 |
 | 강타입 Factory / Invoker | 전용 IL | 식 트리 인터프리터 |
-| ref 매개변수 델리게이트 | 지원 | `NotSupportedException` (대상을 `T` 로 받거나 object 기반 `GetInvoker` 사용) |
-| 예외 종류 | 동일 | 동일 |
+| ref · 포인터 · ref struct 매개변수 델리게이트 | 지원 | `NotSupportedException` (대상을 `T` 로 받거나 object 기반 `GetInvoker` 사용) |
+| 예외 종류 | 동일 (위 제한 제외) | 동일 (위 제한 제외) |
 
 Unity WebGL(IL2CPP) 과 Unity Mono 에디터에서 확인했다. NativeAOT 는 확인하지 않았다.
 

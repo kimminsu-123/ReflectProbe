@@ -62,4 +62,11 @@ public class ProbeCacheTests
         Assert.Throws<MemberNotFoundException>(() => probe[new object(), "x"]);
     }
 
+    // Nullable<V> 를 박싱하면 V 의 상자가 되어 대상 객체로 존재할 수 없다 (결정 40).
+    [Fact]
+    public void Of_Nullable_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => TypeProbe.Of<int?>());
+        Assert.Throws<ArgumentException>(() => TypeProbe.Of(typeof(DayOfWeek?)));
+    }
 }

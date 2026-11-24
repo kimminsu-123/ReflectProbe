@@ -8,7 +8,8 @@ namespace ReflectProbe.Internal
     /// 생성자 · 메서드 검색. 필드 수집(MemberCollector)과 같은 규칙을 쓴다.
     /// - BaseType 체인을 올라가며 타입마다 DeclaredOnly 로 수집 (부모 private 포함)
     /// - override 된 메서드는 가장 파생된 것 1개만, 시그니처가 같은 new 메서드는 자식 우선
-    /// - 프로퍼티 접근자 · 연산자 등 특수 이름, 제네릭 메서드 정의, ref · 포인터 · ref struct 시그니처 제외
+    /// - 인터페이스 대상은 상속한 인터페이스도 수집. 상속 관계가 없는 부모끼리 시그니처가 같으면 둘 다 남는다 (호출은 모호, 결정 38)
+    /// - 프로퍼티 접근자 · 연산자 등 특수 이름, 제네릭 메서드 정의, static abstract / virtual, ref · 포인터 · 함수 포인터 · ref struct 시그니처 제외
     /// - 매개변수 타입은 정확히 일치해야 한다. (Type.GetMethod 의 기본 Binder 는 대입 가능한 타입도 골라 버린다)
     /// </summary>
     internal static class MethodCollector
@@ -22,11 +23,12 @@ namespace ReflectProbe.Internal
             // 이미 수집한 가상 메서드의 최초 정의. 부모 쪽에서 같은 정의를 만나면 자식이 override 한 것이라 건너뛴다.
             var collectedDefinitions = new HashSet<MethodInfo>();
 
-            for (Type? current = type; current != null; current = current.BaseType)
+            foreach ((Type current, _) in MemberCollector.DeclaringTypes(type))
             {
                 foreach (MethodInfo method in current.GetMethods(flags))
                 {
-                    if (method.IsSpecialName || method.ContainsGenericParameters || HasUnsupportedSignature(method))
+                    if (method.IsSpecialName || method.ContainsGenericParameters
+                        || MemberCollector.IsStaticVirtual(method) || HasUnsupportedSignature(method))
                         continue;
 
                     if (method.IsVirtual && !collectedDefinitions.Add(method.GetBaseDefinition()))
@@ -37,7 +39,7 @@ namespace ReflectProbe.Internal
                         overloads = new List<MethodInfo>();
                         byName.Add(method.Name, overloads);
                     }
-                    else if (ContainsSameParameters(overloads, method))
+                    else if (IsHidden(overloads, method))
                     {
                         continue; // 자식의 new 메서드에 가려진 부모 메서드
                     }
@@ -143,12 +145,14 @@ namespace ReflectProbe.Internal
         public static string FormatSignature(string name, Type[] parameterTypes, Type returnType)
             => FormatSignature(name, parameterTypes) + " : " + returnType.Name;
 
-        private static bool ContainsSameParameters(List<MethodInfo> overloads, MethodInfo method)
+        /// <summary>시그니처가 같고 더 파생된 타입이 선언한 메서드가 이미 있다.</summary>
+        private static bool IsHidden(List<MethodInfo> overloads, MethodInfo method)
         {
             Type[] parameterTypes = ParameterTypes(method);
             foreach (MethodInfo overload in overloads)
             {
-                if (ParametersEqual(overload.GetParameters(), parameterTypes))
+                if (ParametersEqual(overload.GetParameters(), parameterTypes)
+                    && MemberCollector.Inherits(overload.DeclaringType!, method.DeclaringType!))
                     return true;
             }
 
@@ -156,13 +160,14 @@ namespace ReflectProbe.Internal
         }
 
         private static bool HasUnsupportedSignature(MethodInfo method)
-        {
-            if (MemberCollector.IsUnsupportedType(method.ReturnType))
-                return true;
+            => MemberCollector.IsUnsupportedType(method.ReturnType) || HasUnsupportedType(ParameterTypes(method));
 
-            foreach (ParameterInfo parameter in method.GetParameters())
+        /// <summary>object[] 로 넘길 수 없는(박싱할 수 없는) 타입이 있다.</summary>
+        public static bool HasUnsupportedType(Type[] types)
+        {
+            foreach (Type type in types)
             {
-                if (MemberCollector.IsUnsupportedType(parameter.ParameterType))
+                if (type != null && MemberCollector.IsUnsupportedType(type))
                     return true;
             }
 

@@ -50,12 +50,15 @@ namespace ReflectProbe
         }
     }
 
-    /// <summary>이름만으로 메서드를 찾았는데 오버로드가 2개 이상이다. 매개변수 타입을 함께 지정해야 한다.</summary>
+    /// <summary>
+    /// 이름(또는 시그니처)에 맞는 멤버가 2개 이상이다. 메서드 오버로드는 매개변수 타입을 지정하고,
+    /// 상속 관계가 없는 부모 인터페이스끼리 이름이 같은 프로퍼티는 인덱스(GetValue / SetValue)로 접근한다.
+    /// </summary>
     public sealed class AmbiguousMemberException : ProbeException
     {
-        /// <summary>모호한 메서드의 타입과 이름으로 만든다.</summary>
+        /// <summary>모호한 멤버의 타입과 이름으로 만든다.</summary>
         public AmbiguousMemberException(Type type, string memberName)
-            : base(type, memberName, $"'{type.FullName}.{memberName}' 의 오버로드가 여러 개입니다. 매개변수 타입을 지정하세요.")
+            : base(type, memberName, $"'{type.FullName}.{memberName}' 에 맞는 멤버가 여러 개입니다. 메서드는 매개변수 타입을, 프로퍼티는 인덱스를 지정하세요.")
         {
         }
     }

@@ -9,7 +9,7 @@ using ReflectProbe;
 namespace ReflectProbe.Benchmarks;
 
 // 12주 : 생성자 팩토리 · 메서드 Invoker.
-// 5주 ReflectionBenchmark 의 ConstructorBenchmarks · MethodCallEmitBenchmarks 와 같은 Enemy · 같은 메서드 이름으로 비교한다.
+// 6주 ReflectionBenchmark 의 ConstructorBenchmarks · MethodCallEmitBenchmarks 와 같은 Enemy · 같은 메서드 이름으로 비교한다.
 // 실행 : dotnet run -c Release -- --filter *ConstructorMethodBenchmarks*
 
 public class Enemy
@@ -27,7 +27,7 @@ public class Enemy
 
     public int Attack(int multiplier) => _damage * multiplier;
 
-    // 기준용 : 인라이닝을 막아 "호출 한 번의 비용"이 측정되도록 한다 (5주와 같음)
+    // 기준용 : 인라이닝을 막아 "호출 한 번의 비용"이 측정되도록 한다 (6주와 같음)
     [MethodImpl(MethodImplOptions.NoInlining)]
     public int AttackNoInline(int multiplier) => _damage * multiplier;
 }
@@ -108,7 +108,7 @@ public class ConstructorMethodBenchmarks
     [Benchmark, BenchmarkCategory("WithArgs")]
     public object ProbeFactory_WithArgs() => _factory(new object?[] { 100, 50 });
 
-    // 강타입 : 인자 배열 · 박싱 없음 (5주 Emit_Typed_WithArgs 와 같은 IL)
+    // 강타입 : 인자 배열 · 박싱 없음 (6주 Emit_Typed_WithArgs 와 같은 IL)
     [Benchmark, BenchmarkCategory("WithArgs")]
     public Enemy ProbeFactory_Typed() => _typedFactory(100, 50);
 
@@ -123,7 +123,7 @@ public class ConstructorMethodBenchmarks
     [Benchmark, BenchmarkCategory("Method")]
     public int ProbeInvoker_Call() => (int)_attack(_enemy, new object?[] { 2 })!;
 
-    // 강타입 : 인자 배열 · 박싱 없음 (5주 Emit_Typed 와 같은 IL)
+    // 강타입 : 인자 배열 · 박싱 없음 (6주 Emit_Typed 와 같은 IL)
     [Benchmark, BenchmarkCategory("Method")]
     public int ProbeInvoker_Typed() => _typedAttack(_enemy, 2);
 

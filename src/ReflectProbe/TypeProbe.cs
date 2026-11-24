@@ -47,7 +47,7 @@ namespace ReflectProbe
 
         // ---------- 생성 / 캐시 ----------
 
-        /// <summary>(type, scope) 의 TypeProbe. 처음 한 번만 만들고 이후 같은 인스턴스를 돌려준다. 열린 제네릭 · ref · 포인터 · ref struct · void 는 ArgumentException.</summary>
+        /// <summary>(type, scope) 의 TypeProbe. 처음 한 번만 만들고 이후 같은 인스턴스를 돌려준다. 열린 제네릭 · ref · 포인터 · 함수 포인터 · ref struct · void · Nullable&lt;V&gt; 는 ArgumentException.</summary>
         public static TypeProbe Of(Type type, ProbeScope scope = ProbeScope.All) => ProbeCache.GetOrCreate(type, scope);
 
         /// <summary>(typeof(T), scope) 의 TypeProbe. Of(typeof(T), scope) 와 같은 인스턴스다.</summary>
@@ -69,7 +69,7 @@ namespace ReflectProbe
 
         /// <summary>
         /// 이름으로 읽고 쓴다. static 멤버는 target 을 무시한다.
-        /// 없는 이름은 MemberNotFoundException, 방향이 막힌 멤버는 MemberNotReadable/NotWritableException.
+        /// 없는 이름은 MemberNotFoundException, 모호한 이름은 AmbiguousMemberException, 방향이 막힌 멤버는 MemberNotReadable/NotWritableException.
         /// 인스턴스 멤버에 null target 은 NullReferenceException, 타입이 맞지 않는 target · value 는 InvalidCastException 이
         /// 그대로 전파된다. (히트 경로에 검사 비용을 두지 않는다)
         /// 값 타입 target 은 박스 안의 값을 직접 수정한다.
@@ -90,7 +90,7 @@ namespace ReflectProbe
             set => _setter(GetIndex(name, depthOffset), target, value);
         }
 
-        /// <summary>이름이 없거나 읽을 수 없는 멤버면 false. 맞지 않는 target 의 예외는 인덱서와 같이 전파된다.</summary>
+        /// <summary>이름이 없거나 모호하거나 읽을 수 없는 멤버면 false. 맞지 않는 target 의 예외는 인덱서와 같이 전파된다.</summary>
         public bool TryGetValue(object? target, string name, out object? value)
         {
             if (Members.TryGet(name, out ProbeMember? member) && member.CanRead)
@@ -103,7 +103,7 @@ namespace ReflectProbe
             return false;
         }
 
-        /// <summary>이름이 없거나 쓸 수 없는 멤버면 false. 맞지 않는 target · value 의 예외는 인덱서와 같이 전파된다.</summary>
+        /// <summary>이름이 없거나 모호하거나 쓸 수 없는 멤버면 false. 맞지 않는 target · value 의 예외는 인덱서와 같이 전파된다.</summary>
         public bool TrySetValue(object? target, string name, object? value)
         {
             if (Members.TryGet(name, out ProbeMember? member) && member.CanWrite)
@@ -117,14 +117,14 @@ namespace ReflectProbe
 
         // ---------- 필드 / 프로퍼티 : 인덱스 기반 (이름 해시 생략) ----------
 
-        /// <summary>이름의 인덱스. 반복 호출할 때는 받아 두고 GetValue / SetValue 로 쓴다. 없으면 MemberNotFoundException.</summary>
-        public int GetIndex(string name) => Members.TryGetIndex(name, out int index) ? index : throw new MemberNotFoundException(Type, name);
+        /// <summary>이름의 인덱스. 반복 호출할 때는 받아 두고 GetValue / SetValue 로 쓴다. 없으면 MemberNotFoundException, 모호하면 AmbiguousMemberException.</summary>
+        public int GetIndex(string name) => Members.TryGetIndex(name, out int index) ? index : throw Members.LookupFailed(name);
 
         /// <summary>이름 + 선언 깊이의 인덱스. 반복 호출할 때는 받아 두고 GetValue / SetValue 로 쓴다.</summary>
         public int GetIndex(string name, int depthOffset)
-            => Members.TryGet(name, depthOffset, out ProbeMember? member) ? member.Index : throw new MemberNotFoundException(Type, name);
+            => Members.TryGet(name, depthOffset, out ProbeMember? member) ? member.Index : throw Members.LookupFailed(name, depthOffset);
 
-        /// <summary>이름의 인덱스를 찾는다. 없으면 false.</summary>
+        /// <summary>이름의 인덱스를 찾는다. 없거나 모호하면 false.</summary>
         public bool TryGetIndex(string name, out int index) => Members.TryGetIndex(name, out index);
 
         /// <summary>범위 밖 index 는 ArgumentOutOfRangeException. IsHidden 멤버도 접근할 수 있다.</summary>
@@ -147,13 +147,14 @@ namespace ReflectProbe
         /// <summary>
         /// 매개변수 타입이 정확히 일치하는 생성자의 팩토리. 생성자당 1회 생성 후 캐싱하지만, 찾는 비용이 있으므로 반환값을 보관해 쓴다.
         /// args 개수가 틀리면 IndexOutOfRangeException, 타입이 틀리면 InvalidCastException 이 그대로 전파된다.
+        /// ref · 포인터 · ref struct 매개변수는 object[] 로 넘길 수 없어 찾지 않는다 (MemberNotFoundException).
         /// </summary>
         public ProbeFactory GetFactory(params Type[] parameterTypes)
         {
             if (parameterTypes is null)
                 throw new ArgumentNullException(nameof(parameterTypes));
 
-            ConstructorInfo constructor = MethodCollector.FindConstructor(Type, Scope, parameterTypes)
+            ConstructorInfo constructor = (MethodCollector.HasUnsupportedType(parameterTypes) ? null : MethodCollector.FindConstructor(Type, Scope, parameterTypes))
                 ?? throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(".ctor", parameterTypes));
 
             return _factoryCache.GetOrAdd(constructor, static (key, builder) => builder.BuildFactory(key), _builder);
@@ -180,13 +181,17 @@ namespace ReflectProbe
             if (parameterTypes is null)
                 throw new ArgumentNullException(nameof(parameterTypes));
 
+            MethodInfo? match = null;
             foreach (MethodInfo method in FindOverloads(name))
             {
-                if (MethodCollector.ParametersEqual(method.GetParameters(), parameterTypes))
-                    return GetOrBuildInvoker(method);
+                if (!MethodCollector.ParametersEqual(method.GetParameters(), parameterTypes))
+                    continue;
+                if (match != null) // 상속 관계가 없는 부모 인터페이스끼리 시그니처가 같다
+                    throw new AmbiguousMemberException(Type, MethodCollector.FormatSignature(name, parameterTypes));
+                match = method;
             }
 
-            throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(name, parameterTypes));
+            return GetOrBuildInvoker(match ?? throw new MemberNotFoundException(Type, MethodCollector.FormatSignature(name, parameterTypes)));
         }
 
         /// <summary>

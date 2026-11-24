@@ -160,4 +160,35 @@ public class ConstructorTests
 
         Assert.Throws<IndexOutOfRangeException>(() => factory(new object?[] { 100 }));
     }
+
+    // ---------- object 기반 팩토리로 넘길 수 없는 매개변수 (결정 39) : 메서드와 같이 찾을 때 막는다 ----------
+
+    [Fact]
+    public unsafe void GetFactory_UnboxableParameter_ThrowsNotFound()
+    {
+        Assert.Throws<MemberNotFoundException>(() => TypeProbe.Of<UnboxableCtors>().GetFactory(typeof(int*)));
+        Assert.Throws<MemberNotFoundException>(() => TypeProbe.Of<UnboxableCtors>().GetFactory(typeof(int).MakeByRefType()));
+        Assert.Throws<MemberNotFoundException>(() => TypeProbe.Of<UnboxableCtors>().GetFactory(typeof(Span<int>)));
+        Assert.Throws<MemberNotFoundException>(() => TypeProbe.Of<UnboxableCtors>().GetFactory(new Type[] { null! }));
+    }
+
+    private delegate UnboxableCtors SpanFactory(Span<int> values);
+
+#if REFLECTION_MODE
+    [Fact]
+    public void Reflection_RefStructParameterDelegate_ThrowsNotSupported()
+        => Assert.Throws<NotSupportedException>(() => TypeProbe.Of<UnboxableCtors>().GetFactory<SpanFactory>());
+#else
+    [Fact]
+    public void GetFactoryTyped_RefStructParameter_Works()
+        => Assert.Equal(4, TypeProbe.Of<UnboxableCtors>().GetFactory<SpanFactory>()(new int[4]).Value);
+#endif
+
+    private class UnboxableCtors
+    {
+        public int Value;
+        public unsafe UnboxableCtors(int* value) => Value = *value;
+        public UnboxableCtors(ref int value) => Value = value;
+        public UnboxableCtors(Span<int> values) => Value = values.Length;
+    }
 }

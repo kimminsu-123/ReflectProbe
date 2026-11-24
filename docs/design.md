@@ -46,6 +46,10 @@
 | 35 | 강타입 Getter / Setter / RefSetter 의 TValue | 멤버 타입과 정확히 일치하거나 참조 변환 · 박싱/언박싱(object · 부모 타입 · 인터페이스)만 허용. 서로 다른 값 타입(int ↔ float, enum ↔ int, `int?` ↔ int 포함)은 델리게이트를 만들 때 `InvalidCastException`. 값 타입을 박싱해도 들어갈 수 없는 참조 타입(int → string 등)도 같다. struct 인스턴스 멤버의 `Setter` 는 `NotSupportedException` (static 멤버는 허용). 두 모드 공용 검사 (14주 버그 수정) | 수정 전 Emit 은 변환 IL 없이 비트를 재해석해 예외 없이 틀린 값을 냈다 (int -7 → `Getter<float>` = NaN, `Setter<float>` 5f → 1084227584). struct `Setter` 는 Emit 에서 NullReferenceException, 폴백에서는 조용히 무시. 폴백의 호출 시 `InvalidCastException` 과도 달랐다 (결정 30). 처음 수정은 값 타입 ↔ 값 타입만 막아 `Getter<string>(int 멤버)` 가 int 상자를 string 으로 돌려주는 타입 혼동이 남아 있었고, 14주 점검에서 함께 막았다. 만들 때 막으므로 호출 비용은 0 |
 | 36 | 함수 포인터 멤버 | 포인터와 같이 수집하지 않는다 (멤버 · 메서드 시그니처 · 대상 타입). `BaseType` 이 없고 object · 인터페이스가 아닌 타입으로 판단 (14주 점검) | 박싱할 수 없는 타입. 수정 전 Emit 은 함수 포인터 값을 object 참조로 돌려줘 사용하는 순간 프로세스가 종료됐다. `Type.IsFunctionPointer` 는 .NET 8 부터라 netstandard2.1 과 같은 코드를 쓴다 |
 | 37 | Nullable 멤버 쓰기 | 정확히 같은 V 의 상자 또는 null 만. `DayOfWeek?` 에 int 상자는 두 모드 모두 `InvalidCastException` (14주 점검, 결정 30 보완) | Emit 의 `unbox.any Nullable<V>` 규칙. 수정 전 폴백은 열거형 ↔ 정수를 허용해 두 모드가 달랐다 |
+| 38 | 인터페이스 대상의 상속 멤버 | 상속한 인터페이스의 프로퍼티 · 메서드를 모두 수집. 깊이(`DepthOffset`)는 가장 긴 상속 경로. 더 파생된 인터페이스의 같은 이름(메서드는 같은 시그니처)이 부모를 가리고, 상속 관계가 없는 부모끼리 겹치면 이름 접근은 `AmbiguousMemberException` (`Try*` 는 false), 인덱스 접근은 가능 (14주, 사용자 확인) | `Type.GetProperties` 는 인터페이스의 부모 멤버를 돌려주지 않아 `TypeProbe.Of<IList<int>>()` 에서 `Count` 를 찾지 못했다. FastMember 는 지원하지만 먼저 나온 쪽을 고르고 `GetInterfaces()` 의 순서는 보장되지 않는다. C# 도 모호성 오류다. 상속 판단은 제네릭 변성 때문에 `IsAssignableFrom` 을 쓰지 않는다 |
+| 39 | 박싱할 수 없는 매개변수의 생성자 | object 기반 `GetFactory(types)` 는 찾을 때 `MemberNotFoundException` (메서드 규칙과 같음). 강타입 `GetFactory<TDelegate>` 는 Emit 에서 지원, 폴백에서 `NotSupportedException` (14주, 사용자 확인) | 수정 전 Emit 은 만들어진 뒤 호출할 때, 폴백의 강타입은 만들 때 `InvalidProgramException` |
+| 40 | `Nullable<V>` 대상 | `ArgumentException` (14주, 사용자 확인) | `int?` 를 박싱하면 int 상자라 대상 객체로 존재하지 않는다. 수정 전 Emit 은 쓰기가 조용히 사라지고 폴백은 `FieldAccessException` |
+| 41 | 인터페이스의 static abstract · static virtual | 수집하지 않는다 (14주 점검) | constrained 호출이 아니면 부를 수 없다. 수정 전 Emit 은 이 멤버 하나 때문에 타입 전체 접근이 `BadImageFormatException` (IL switch 가 메서드 1개) |
 
 ### 계획서 초안에서 바뀐 점
 
@@ -143,7 +147,7 @@ probe.Getter<int>("hp")(p)      ← 멤버 전용 DynamicMethod, 박싱 없음
 ## 4. AOT 폴백
 
 - 감지 : 프로세스당 1회 (결정 28). `RuntimeFeature.IsDynamicCodeSupported` + DynamicMethod 시험 생성 · 호출, 두 TFM 같은 코드.
-- 동작 : 공개 API 동일 (결정 30, 예외 : ref 매개변수 델리게이트는 결정 34). 내부는 멤버마다 MemberInfo 를 붙잡은 델리게이트 배열로 GetValue / SetValue / Invoke. 강타입 API 도 박싱이 남고, 강타입 Factory · Invoker 는 식 트리 인터프리터를 거친다 (결정 31).
+- 동작 : 공개 API 동일 (결정 30, 예외 : ref · 포인터 · ref struct 매개변수 델리게이트는 결정 34 · 39). 내부는 멤버마다 MemberInfo 를 붙잡은 델리게이트 배열로 GetValue / SetValue / Invoke. 강타입 API 도 박싱이 남고, 강타입 Factory · Invoker 는 식 트리 인터프리터를 거친다 (결정 31).
 - 확인 : `TypeProbe.Mode`. 테스트는 두 번째 테스트 프로젝트가 모듈 초기화에서 internal `ProbeBuilder.ForceCurrent` 로 폴백을 고정해 같은 테스트를 실행 (결정 29). 할당 0 B 테스트 3개는 `[EmitOnlyFact]` 로 폴백에서 건너뛴다.
 - Unity 실측 (13주, `05_코드/ReflectProbeUnityCheck/Results/README.md`)
   - Mono 에디터 (6000.0.61f1 · 2022.3.20f1) : 감지 Emit, 16/16. 폴백 강제도 16/16.
